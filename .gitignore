@@ -1,0 +1,27 @@
+# Kişisel profil ve üretilen belgeler
+profil.json
+aday-kanitlari.json
+ayarlar.json
+CV-Sürümleri/
+data/
+
+# Yerel iş arama verileri ve model kayıtları
+tarama-gecmisi/
+on-eleme-gecmisi/
+esleme-gecmisi/
+cv-uyum-gecmisi/
+ilan-kayit-defteri.json
+ilan-on-eleme-durumu.json
+ilan-esleme-durumu.json
+arayuz-cv-secimleri.json
+cv-ats-profilleri.json
+cv-ats-puanlari.json
+
+# Python / çalışma dosyaları
+__pycache__/
+.venv/
+*.py[cod]
+*.log
+.env
+.env.*
+!.env.example

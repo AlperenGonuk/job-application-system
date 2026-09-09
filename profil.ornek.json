@@ -1,0 +1,36 @@
+{
+  "identity": {
+    "name": "Ad Soyad",
+    "phone": "+90 555 000 00 00",
+    "email": "ad.soyad@example.com",
+    "linkedin": "linkedin.com/in/kullaniciadi",
+    "github": "github.com/kullaniciadi",
+    "tr_address": "İlçe, İl / Türkiye",
+    "international_location": "City, Country",
+    "tr_photo": "assets/profil-fotografi.png"
+  },
+  "cv_profiles": {
+    "TR": {
+      "genel": {
+        "headline": "Junior Software Developer",
+        "summary": "Doğrulanmış proje ve staj deneyimlerini hedef rolle ilişkilendiren kısa profil metni.",
+        "experience": [{"title": "Şirket | Pozisyon | Tarih", "bullets": ["Eylem + kullanılan teknoloji + somut sonuç içeren gerçek madde."]}],
+        "projects": [{"title": "Proje | Teknolojiler", "bullets": ["Problemi, katkını ve kullanılan araçları anlatan gerçek madde."]}],
+        "education": "Üniversite | Bölüm | Mezuniyet tarihi veya beklenen tarih",
+        "skills": [{"label": "Backend", "value": "Yalnız doğrulanmış teknolojiler"}],
+        "language": "İngilizce: Seviye"
+      }
+    },
+    "EN": {
+      "genel": {
+        "headline": "Junior Software Developer",
+        "summary": "A concise profile based only on verified projects and experience.",
+        "experience": [{"title": "Company | Role | Dates", "bullets": ["Action + technology + truthful outcome."]}],
+        "projects": [{"title": "Project | Technologies", "bullets": ["A factual project contribution."]}],
+        "education": "University | Degree | Graduation date or expected date",
+        "skills": [{"label": "Backend", "value": "Verified technologies only"}],
+        "language": "English: Level"
+      }
+    }
+  }
+}

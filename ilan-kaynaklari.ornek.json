@@ -1,0 +1,9 @@
+{
+  "max_raw_cards": 150,
+  "sources": [
+    {
+      "name": "LinkedIn tercih araması",
+      "mode": "preferences"
+    }
+  ]
+}
