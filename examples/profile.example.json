@@ -11,7 +11,7 @@
   },
   "cv_profiles": {
     "TR": {
-      "genel": {
+      "general": {
         "headline": "Junior Software Developer",
         "summary": "Doğrulanmış proje ve staj deneyimlerini hedef rolle ilişkilendiren kısa profil metni.",
         "experience": [{"title": "Şirket | Pozisyon | Tarih", "bullets": ["Eylem + kullanılan teknoloji + somut sonuç içeren gerçek madde."]}],
@@ -22,7 +22,7 @@
       }
     },
     "EN": {
-      "genel": {
+      "general": {
         "headline": "Junior Software Developer",
         "summary": "A concise profile based only on verified projects and experience.",
         "experience": [{"title": "Company | Role | Dates", "bullets": ["Action + technology + truthful outcome."]}],

@@ -1,6 +1,6 @@
 """Yapılandırılabilir, ATS öncelikli tek sütunlu CV üreticisi.
 
-Önce ``profil.ornek.json`` dosyasını ``profil.json`` olarak kopyalayıp kendi
+Önce ``examples/profile.example.json`` dosyasını ``data/profile.json`` olarak kopyalayıp kendi
 doğrulanmış bilgilerinle doldur. Bu dosyada örnek kişisel veri bulunmaz.
 """
 from __future__ import annotations
@@ -13,19 +13,18 @@ from docx.enum.style import WD_STYLE_TYPE
 from docx.enum.text import WD_TAB_ALIGNMENT
 from docx.oxml.ns import qn
 from docx.shared import Cm, Pt
-from depolama import data_dir, data_file, load_json
+from job_app.storage import data_dir, data_file, load_json
 
-ROOT = Path(__file__).resolve().parent
-OUT = data_dir("CV-Sürümleri")
-PROFILE_FILE = data_file("profil.json")
+OUT = data_dir("cv-versions")
+PROFILE_FILE = data_file("profile.json")
 
 
 def load_profile() -> dict:
     if not PROFILE_FILE.exists():
-        raise RuntimeError("profil.json bulunamadı. profil.ornek.json dosyasını kopyalayıp kendi gerçek bilgilerinle doldur.")
+        raise RuntimeError("data/profile.json bulunamadı. examples/profile.example.json dosyasını kopyalayıp kendi gerçek bilgilerinle doldur.")
     data = load_json(PROFILE_FILE, {})
     if not isinstance(data.get("identity"), dict) or not isinstance(data.get("cv_profiles"), dict):
-        raise RuntimeError("profil.json biçimi geçersiz. profil.ornek.json şemasını kullan.")
+        raise RuntimeError("data/profile.json biçimi geçersiz. examples/profile.example.json şemasını kullan.")
     return data
 
 
@@ -88,9 +87,9 @@ def add_entry(doc: Document, entry: dict) -> None:
 
 def content_for(profile: dict, language: str, focus: str) -> dict:
     variants = profile["cv_profiles"].get(language, {})
-    content = variants.get(focus) or variants.get("genel")
+    content = variants.get(focus) or variants.get("general")
     if not isinstance(content, dict):
-        raise RuntimeError(f"profil.json içinde {language} için '{focus}' veya 'genel' CV içeriği yok.")
+        raise RuntimeError(f"profile.json içinde {language} için '{focus}' veya 'general' CV içeriği yok.")
     return content
 
 
@@ -114,7 +113,7 @@ def add_header(doc: Document, language: str, identity: dict, content: dict) -> N
         add_text(doc.add_paragraph(), contact, 8.8)
 
 
-def build(language: str, focus: str = "genel", filename: str | None = None) -> Path:
+def build_cv(language: str, focus: str = "general", filename: str | None = None) -> Path:
     if language not in {"TR", "EN"}:
         raise ValueError("language yalnız TR veya EN olabilir")
     profile = load_profile()
@@ -149,6 +148,11 @@ def build(language: str, focus: str = "genel", filename: str | None = None) -> P
     return path
 
 
+def main() -> None:
+    """Temel TR ve EN CV'lerini üretir."""
+    print(build_cv("TR"))
+    print(build_cv("EN"))
+
+
 if __name__ == "__main__":
-    print(build("TR"))
-    print(build("EN"))
+    main()

@@ -13,13 +13,12 @@ from pathlib import Path
 
 from docx import Document
 
-from ilan_sonnet_esle import fetch_description
-from depolama import data_dir, data_file, load_json, write_json
+from job_app.review_detailed import fetch_description
+from job_app.storage import data_dir, data_file, load_json, write_json
 
-ROOT = Path(__file__).resolve().parent
-CV_DIR = data_dir("CV-Sürümleri")
-PROFILES_FILE = data_file("cv-ats-profilleri.json")
-SCORES_FILE = data_file("cv-ats-puanlari.json")
+CV_DIR = data_dir("cv-versions")
+PROFILES_FILE = data_file("ats-profiles.json")
+SCORES_FILE = data_file("ats-scores.json")
 def available_cvs() -> dict[str, dict]:
     """Kullanıcının ürettiği tüm CV-TR/EN-*.docx dosyalarını keşfeder."""
     result = {}
@@ -130,7 +129,7 @@ def compute(job: dict) -> dict:
         score = round(min(100, 20 + coverage * 63 + role_bonus(job.get("title", ""), cv_terms)))
         if basis != "ilan metni":
             score = min(score, 45)
-        rows.append({"cv": name, "puan": score, "eslesen_terimler": matched, "eksik_terimler": missing, "dil": profile["language"]})
+        rows.append({"cv": name, "score": score, "matched_terms": matched, "missing_terms": missing, "language": profile["language"]})
     return {"computed_at": datetime.now(timezone.utc).isoformat(), "basis": basis, "description_hash": digest(description), "rows": rows}
 
 

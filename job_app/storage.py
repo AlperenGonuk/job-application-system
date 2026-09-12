@@ -1,41 +1,53 @@
 """Yerel çalışma verileri için tek, güvenli depolama noktası.
 
-Kaynak kodu ile kullanıcı verisini ayırır. Eski sürümlerde proje kökünde
-bulunan çalışma dosyaları yalnızca ilk okumada data/ altına kopyalanır;
-orijinal dosyalar silinmez. JSON yazımları atomiktir, böylece uygulama
-kapanırsa yarım dosya bırakılmaz.
+Kaynak kodu ile kullanıcı verisini ayırır: üretilen her şey ``data/`` altına
+yazılır. JSON yazımları atomiktir, böylece uygulama kapanırsa yarım dosya
+bırakılmaz. Tek dosya .exe olarak paketlendiğinde veri klasörü exe'nin yanında,
+depoyla gelen salt-okunur örnekler ise paket içinde aranır.
 """
 from __future__ import annotations
 
 import json
 import os
-import shutil
+import sys
 import tempfile
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+
+def project_root() -> Path:
+    """Kullanıcı verisinin yazılacağı kök dizin."""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parents[1]
+
+
+def resource_root() -> Path:
+    """Depoyla birlikte gelen salt-okunur dosyaların (examples/, docs/) kökü."""
+    bundled = getattr(sys, "_MEIPASS", None)
+    return Path(bundled) if bundled else project_root()
+
+
+ROOT = project_root()
 DATA_DIR = ROOT / "data"
 
 
 def data_file(name: str) -> Path:
-    """data/ altındaki dosyayı döndürür; varsa eski kök kopyasını taşır."""
+    """data/ altındaki dosya yolunu döndürür."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    destination = DATA_DIR / name
-    legacy = ROOT / name
-    if not destination.exists() and legacy.is_file():
-        shutil.copy2(legacy, destination)
-    return destination
+    return DATA_DIR / name
 
 
 def data_dir(name: str) -> Path:
-    """data/ altındaki klasörü döndürür; eski klasörü kayıpsız kopyalar."""
+    """data/ altındaki klasörü oluşturur ve döndürür."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     destination = DATA_DIR / name
-    legacy = ROOT / name
-    if not destination.exists() and legacy.is_dir():
-        shutil.copytree(legacy, destination)
     destination.mkdir(parents=True, exist_ok=True)
     return destination
+
+
+def resource_file(*parts: str) -> Path:
+    """Depoyla gelen örnek/şablon dosyasının yolunu döndürür."""
+    return resource_root().joinpath(*parts)
 
 
 def load_json(path: Path, default):

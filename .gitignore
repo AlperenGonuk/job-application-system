@@ -1,11 +1,11 @@
-# Kişisel profil ve üretilen belgeler
+# Tüm kullanıcı verisi: profil, CV'ler, tarama geçmişi, model sonuçları, ayarlar
+data/
+
+# Eski Türkçe adlı sürümlerden kalan yerel dosyalar (taşınana kadar korunur)
 profil.json
 aday-kanitlari.json
 ayarlar.json
 CV-Sürümleri/
-data/
-
-# Yerel iş arama verileri ve model kayıtları
 tarama-gecmisi/
 on-eleme-gecmisi/
 esleme-gecmisi/
@@ -20,8 +20,14 @@ cv-ats-puanlari.json
 # Python / çalışma dosyaları
 __pycache__/
 .venv/
+venv/
 *.py[cod]
 *.log
 .env
 .env.*
 !.env.example
+
+# Paketleme çıktıları
+build/
+dist/
+*.spec
