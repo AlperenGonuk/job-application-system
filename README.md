@@ -2,7 +2,7 @@
 
 ## English
 
-A privacy-first local desktop app for collecting public job listings, tracking applications, and managing CV workflows on Windows. Job-search data stays on the user's device and application decisions remain fully manual.
+A privacy-first local desktop app for collecting public job listings, tracking applications, and managing CV workflows on Windows, Linux, and macOS. Job-search data stays on the user's device and application decisions remain fully manual.
 
 > This is the public release source. Do not add real CVs, personal job history, model sessions, API keys, or screenshots containing personal information.
 
@@ -24,14 +24,17 @@ A privacy-first local desktop app for collecting public job listings, tracking a
 
 ### Quick start
 
-1. Install Python 3.11+ and LibreOffice if you want to view DOCX files in the app. Linux and macOS are also supported: DOCX files open with LibreOffice when installed, or the OS default handler otherwise.
-2. Set up a virtual environment and install dependencies: on Windows run `scripts\setup.bat`, on Linux/macOS run `./scripts/setup.sh` (or `bash scripts/setup.sh` if your checkout lost the executable bit).
-3. Start the app: `scripts\start.bat` (Windows) or `./scripts/start.sh` (Linux/macOS; alternatively `bash scripts/start.sh`), or run `python main.py` directly.
-4. The app creates the `data` folder locally. Copy `examples/profile.example.json` to `data/profile.json` and add only truthful, verified information.
-5. Copy `examples/candidate-evidence.example.json` to `data/candidate-evidence.json` and add evidence for CV and job-review workflows.
-6. Run `python main.py build-cv` to create base Turkish and English CVs.
-7. On the first scan, the app creates a default source from saved preferences. You can later add your own sources in `data/job-sources.json`.
-8. If you have data from an older Turkish-named version, it is migrated automatically on first launch (`job_app/migration.py`): file names and JSON keys move to the new schema with no data loss. You can also run it manually with `python main.py migrate`.
+1. Install Python 3.11+. LibreOffice is optional, for viewing DOCX files inside the app (otherwise the OS default handler opens them).
+2. Install dependencies: `scripts\setup.bat` on Windows, `./scripts/setup.sh` on Linux/macOS (or `bash scripts/setup.sh`).
+3. Start the app: `scripts\start.bat` on Windows, `./scripts/start.sh` on Linux/macOS, or `python main.py`.
+4. **Create your profile with your own AI agent.** In the first-run window (or **How to use**), press **Copy AI onboarding instruction** and paste it into the AI agent you already use — Hermes, Claude Code, Codex, Antigravity, or a browser chat. Give it your CV if you have one; it reads that first and only asks what is missing. Agents that can write files create `data/profile.json` and `data/candidate-evidence.json` themselves (and may fill your job preferences into `data/settings.json`); a browser chat prints both files for you to save.
+5. **Read both files once.** The instruction forbids invented experience, but models can still overstate — for example calling you a graduate before you graduate, or adding a tool you never named. Correct anything that is not true; the AI reviews trust these files.
+6. In the app, open **Settings**: check your job preferences, choose your AI agent, and press **Test selected agent**.
+7. Run **Collect new jobs → Initial review → Detailed review**. Base TR/EN CVs can be generated with `python main.py build-cv`; all CVs land in `data/cv-versions/`.
+
+Prefer to do it by hand? Copy `examples/profile.example.json` to `data/profile.json` and `examples/candidate-evidence.example.json` to `data/candidate-evidence.json`, then fill in only truthful information. Detailed review stops with a clear message until `data/candidate-evidence.json` exists.
+
+On the first scan the app creates a default job source from your preferences; you can add your own in `data/job-sources.json`. Data from an older Turkish-named version is migrated automatically on first launch (`python main.py migrate` runs it manually).
 
 #### Command-line tasks
 
@@ -72,15 +75,18 @@ job_app/
   migration.py                             # one-time legacy data migration
 scripts/                    # setup.bat/.sh, start.bat/.sh, build_exe.py
 examples/                   # *.example.json templates
-docs/AGENT-ONBOARDING.md    # AI onboarding instructions
+docs/AGENT-ONBOARDING.md    # AI onboarding instruction
 data/                       # user data, gitignored
 ```
 
 ### AI agents
 
 - **Core features without AI:** Job collection, deduplication, local filtering, local keyword-based ATS estimation, and CV tracking work without any model or CLI.
-- **AI-assisted features:** Initial review, detailed review, and CV-to-job comparison use a connected AI CLI agent. The app scans PATH for supported agents — Hermes, Claude Code (`claude`), Codex CLI (`codex`), Antigravity (`agy`), Gemini CLI (`gemini`), Pi (`pi`), and Cursor Agent (`cursor-agent`) — and lists the ones it finds. Pick one under Settings > AI agent, optionally override its model names, and verify it with "Test selected agent"; or write a custom command with a `{prompt}` placeholder (e.g. `myagent run --text {prompt}`). If none is installed, AI buttons show a warning but the non-AI core is never blocked.
-- **Guided profile setup:** The first-run popup's "Copy AI onboarding instructions" button copies `docs/AGENT-ONBOARDING.md` to the clipboard. Paste it into any AI agent (a CLI or a browser chat); it asks about target role, sector, and city, extracts details from an existing CV if you provide one, asks only about what's missing, and produces `data/profile.json` and `data/candidate-evidence.json`.
+- **AI-assisted features:** Initial review, detailed review, and CV-to-job comparison use a connected AI CLI agent. The app scans PATH for Hermes, Claude Code (`claude`), Codex CLI (`codex`), Antigravity (`agy`), Gemini CLI (`gemini`), Pi (`pi`), and Cursor Agent (`cursor-agent`). Pick one under Settings > AI agent, optionally override its model names, and verify it with **Test selected agent** — or write a custom command with a `{prompt}` placeholder (e.g. `myagent run --text {prompt}`). If none is installed, AI buttons show a warning but the non-AI core is never blocked.
+- **Hermes and providers:** The app calls Hermes with `--provider anthropic` and Claude models by default, regardless of Hermes' own default provider. If your Hermes uses another provider (Gemini, OpenRouter, …), set `"ai_provider"` in `data/settings.json` and put matching model names in Settings.
+- **Codex desktop app:** The Codex desktop app ships its own `codex.exe` but does not add it to PATH, so it is not detected automatically. Install Codex CLI, or use a custom command pointing at that `codex.exe` with `exec {prompt}`.
+
+Verified agent/model pairs are listed in `docs/AGENT-ONBOARDING.md`. Leaving model fields empty is always safe: the agent's own default model is used.
 
 ### Privacy and security
 
@@ -92,17 +98,18 @@ See [RELEASE-CHECKLIST.md](RELEASE-CHECKLIST.md) for release checks and [SECURIT
 
 ## Türkçe
 
-Windows için yerel iş ilanı ve CV takip aracı. İlan taramalarını saklar, tekrar ilanları ayıklar, isteğe bağlı model değerlendirmesi yürütür ve hangi CV'nin hangi ilana seçildiğini yerelde kaydeder.
+Windows, Linux ve macOS için yerel iş ilanı ve CV takip aracı. Açık ilanları toplar, tekrar eden ilanları ayıklar, isteğe bağlı yapay zeka değerlendirmesi yürütür ve hangi CV'nin hangi ilana seçildiğini yerelde kaydeder. İş arama verisi bilgisayarında kalır, başvuru kararları tamamen sende.
 
-> Bu klasör yayın hazırlığı içindir; henüz yayımlanmış bir paket değildir. Gerçek CV, kişisel ilan geçmişi veya model oturumları bu klasöre konmaz.
+> Bu depo herkese açık yayın kaynağıdır. Gerçek CV, kişisel ilan geçmişi, model oturumları, API anahtarı veya kişisel bilgi içeren ekran görüntüsü eklenmez.
 
 ### Şu an yaptığı işler
 
 - Kullanıcı tetiklediğinde açık ilan kartlarını toplar ve daha önce görülenleri ayıklar.
-- Tarihe, Haiku ön elemesine ve Sonnet kararına göre ilanları arayüzde filtreler.
-- Katı, esnek ve çok esnek Sonnet değerlendirme modları sunar.
+- Kayıtlı rol ve konum tercihlerinden varsayılan LinkedIn aramalarını oluşturur; sonradan kendi kaynaklarını ekleyebilirsin.
+- İlanları tarama tarihine, ön eleme ve detaylı eleme sonuçlarına göre filtreler.
+- Detaylı eleme için katı, esnek ve çok esnek değerlendirme modları sunar.
 - Yerel CV dosyalarındaki teknik terimleri ilan metniyle karşılaştırır. Bu puan şirket ATS sonucu değildir.
-- İlanın dili için TR/EN CV seçimini ve başvuru kararını yerelde saklar.
+- Her ilan için seçilen TR/EN CV'yi ve başvuru kararını yerelde saklar.
 
 ### Yapmadığı işler
 
@@ -112,14 +119,17 @@ Windows için yerel iş ilanı ve CV takip aracı. İlan taramalarını saklar, 
 
 ### İlk kurulum
 
-1. Python 3.11+ ve LibreOffice (DOCX görüntülemek için) kurun. Linux ve macOS da desteklenir: DOCX dosyaları kuruluysa LibreOffice, değilse işletim sisteminin varsayılan programıyla açılır.
-2. Sanal ortamı kurup bağımlılıkları yüklemek için Windows'ta `scripts\setup.bat`, Linux/macOS'ta `./scripts/setup.sh` çalıştırın (çalıştırma izni kaybolduysa `bash scripts/setup.sh`).
-3. Uygulamayı başlatmak için Windows'ta `scripts\start.bat`, Linux/macOS'ta `./scripts/start.sh` (ya da `bash scripts/start.sh`) çalıştırın; ya da doğrudan `python main.py` komutunu kullanın.
-4. Uygulama `data` klasörünü yerelde oluşturur. `examples/profile.example.json` dosyasını `data/profile.json` olarak kopyalayın; yalnız gerçek ve doğrulanmış bilgilerinizi yazın.
-5. `examples/candidate-evidence.example.json` dosyasını `data/candidate-evidence.json` olarak kopyalayın; değerlendirmede kullanılabilecek doğrulanmış kanıtları ekleyin.
-6. `python main.py build-cv` ile temel TR/EN CV'leri oluşturun.
-7. İlk taramada uygulama tercihlerinize göre varsayılan ilan kaynağını otomatik hazırlar. İsterseniz sonradan `data/job-sources.json` içinden kendi kaynaklarınızı ekleyebilirsiniz.
-8. Eski Türkçe adlandırmalı bir sürümden veriniz varsa ilk açılışta otomatik taşınır (`job_app/migration.py`): dosya adları ve JSON anahtarları veri kaybı olmadan yeni şemaya geçer. İsterseniz `python main.py migrate` ile elle de çalıştırabilirsiniz.
+1. Python 3.11+ kur. LibreOffice isteğe bağlıdır; DOCX dosyalarını uygulama içinden görmek için gerekir (yoksa işletim sisteminin varsayılan programı açar).
+2. Bağımlılıkları kur: Windows'ta `scripts\setup.bat`, Linux/macOS'ta `./scripts/setup.sh` (ya da `bash scripts/setup.sh`).
+3. Uygulamayı başlat: Windows'ta `scripts\start.bat`, Linux/macOS'ta `./scripts/start.sh` ya da doğrudan `python main.py`.
+4. **Profilini kendi yapay zeka ajanınla oluştur.** İlk açılış penceresinde (veya **Nasıl kullanılır?** bölümünde) **Yapay zeka başlangıç yönergesini kopyala** düğmesine bas ve metni zaten kullandığın ajana yapıştır — Hermes, Claude Code, Codex, Antigravity ya da tarayıcıdaki bir sohbet. CV'n varsa ver; önce onu okur, yalnız eksikleri sorar. Dosya yazabilen ajanlar `data/profile.json` ve `data/candidate-evidence.json` dosyalarını kendisi oluşturur (iş tercihlerini `data/settings.json` içine de işleyebilir); tarayıcı sohbeti iki dosyayı ekrana yazar, sen kaydedersin.
+5. **İki dosyayı bir kez oku.** Yönerge olmayan deneyimi yazmayı yasaklar ama modeller yine de abartabilir — örneğin mezun olmadan "mezun" yazmak ya da hiç söylemediğin bir aracı eklemek. Doğru olmayan her şeyi düzelt; yapay zeka değerlendirmeleri bu dosyalara güvenir.
+6. Uygulamada **Ayarlar**'ı aç: iş tercihlerini kontrol et, yapay zeka ajanını seç ve **Seçili ajanı test et** düğmesine bas.
+7. **Yeni ilanları topla → Ön eleme → Detaylı eleme** sırasıyla çalıştır. Temel TR/EN CV'ler `python main.py build-cv` ile üretilir; tüm CV'ler `data/cv-versions/` klasörüne düşer.
+
+Elle yapmak istersen `examples/profile.example.json` dosyasını `data/profile.json`, `examples/candidate-evidence.example.json` dosyasını `data/candidate-evidence.json` olarak kopyala ve yalnız doğru bilgileri yaz. `data/candidate-evidence.json` oluşana kadar detaylı eleme net bir uyarıyla durur.
+
+İlk taramada uygulama tercihlerine göre varsayılan ilan kaynağını hazırlar; kendi kaynaklarını `data/job-sources.json` içine ekleyebilirsin. Eski Türkçe adlandırmalı bir sürümden kalan veri ilk açılışta otomatik taşınır (`python main.py migrate` ile elle de çalışır).
 
 #### Komut satırı görevleri
 
@@ -164,17 +174,20 @@ docs/AGENT-ONBOARDING.md    # yapay zeka başlangıç yönergesi
 data/                       # kullanıcı verisi, gitignore'da
 ```
 
-#### Yapay zeka ajanları
+### Yapay zeka ajanları
 
-- **Yapay zeka olmadan çekirdek:** İlan toplama, tekrar ayıklama, yerel filtreleme, anahtar kelime tabanlı yerel ATS puanı ve CV kayıt yönetimi hiçbir model veya CLI gerektirmeden tamamen yerel çalışır.
-- **Yapay zeka destekli özellikler:** Ön eleme, detaylı eleme ve CV-ilan karşılaştırması bağlı bir yapay zeka CLI ajanı üzerinden çalışır. Uygulama PATH'i tarayıp desteklenen ajanları bulur — Hermes, Claude Code (`claude`), Codex CLI (`codex`), Antigravity (`agy`), Gemini CLI (`gemini`), Pi (`pi`) ve Cursor Agent (`cursor-agent`) — ve bulduklarını listeler. Ayarlar > Yapay zeka bölümünden birini seçin, isterseniz model adlarını geçersiz kılın ve "Seçili ajanı test et" ile doğrulayın; ya da `{prompt}` yer tutuculu kendi özel komutunuzu yazın (ör. `myagent run --text {prompt}`). Hiçbiri kurulu değilse yapay zeka düğmeleri uyarı gösterir ama çekirdek işlevler engellenmez.
-- **Yönlendirmeli profil kurulumu:** İlk açılış pop-up'ındaki "Yapay zeka başlangıç yönergesini kopyala" düğmesi `docs/AGENT-ONBOARDING.md` içeriğini panoya kopyalar. Bunu herhangi bir yapay zeka ajanına (CLI veya tarayıcı sohbeti) yapıştırın; ajan hedef rol, sektör ve şehir gibi soruları sorar, mevcut bir CV verirseniz ondan bilgi çıkarır, yalnız eksikleri sorar ve sonunda `data/profile.json` ile `data/candidate-evidence.json` dosyalarını üretir.
+- **Yapay zeka olmadan çekirdek:** İlan toplama, tekrar ayıklama, yerel filtreleme, anahtar kelime tabanlı yerel ATS puanı ve CV kayıt yönetimi hiçbir model veya CLI gerektirmeden çalışır.
+- **Yapay zeka destekli özellikler:** Ön eleme, detaylı eleme ve CV-ilan karşılaştırması bağlı bir yapay zeka CLI ajanı kullanır. Uygulama PATH'te Hermes, Claude Code (`claude`), Codex CLI (`codex`), Antigravity (`agy`), Gemini CLI (`gemini`), Pi (`pi`) ve Cursor Agent (`cursor-agent`) arar. Ayarlar > Yapay zeka bölümünden birini seç, istersen model adlarını değiştir ve **Seçili ajanı test et** ile doğrula — ya da `{prompt}` yer tutuculu kendi komutunu yaz (ör. `myagent run --text {prompt}`). Hiçbiri kurulu değilse yapay zeka düğmeleri uyarı gösterir ama çekirdek işlevler engellenmez.
+- **Hermes ve sağlayıcılar:** Uygulama Hermes'i, Hermes'in kendi varsayılan sağlayıcısından bağımsız olarak `--provider anthropic` ve Claude modelleriyle çağırır. Hermes'in başka bir sağlayıcı kullanıyorsa (Gemini, OpenRouter, …) `data/settings.json` içinde `"ai_provider"` alanını ayarla ve Ayarlar'a o sağlayıcının model adlarını yaz.
+- **Codex masaüstü uygulaması:** Codex masaüstü uygulaması kendi `codex.exe` dosyasıyla gelir ama PATH'e eklemez, bu yüzden otomatik bulunmaz. Codex CLI kur ya da o `codex.exe` yolunu `exec {prompt}` ile özel komut olarak yaz.
+
+Doğrulanmış ajan/model eşleşmeleri `docs/AGENT-ONBOARDING.md` içinde. Model alanlarını boş bırakmak her zaman güvenlidir: ajanın kendi varsayılan modeli kullanılır.
 
 ### Gizlilik
 
-Tüm kullanıcı verisi `data/` altında tutulur ve `.gitignore` içindedir: profil, ayarlar, üretilen CV'ler, ilan geçmişi ve değerlendirme kayıtları. Bilinen kimlik alanları (ad, telefon, e-posta, adres, fotoğraf, kimlik no) yapay zeka girdilerinden çıkarılır; CV gövdesinde yalnız tanınan mesleki bölümler kullanılır. Serbest metin ve bağlantı parametrelerindeki telefon, e-posta, kimlik numarası, açık adres, fotoğraf ve yerel yol desenleri maskelenir. Desen tabanlı maskeleme en iyi çaba ilkesiyle çalışır ve alışılmadık biçimde yazılmış kişisel bilgiyi kaçırabilir; serbest metin alanlarına kişisel bilgi yazmayın. İlan URL'leri HTTPS, izinli alan adı, yönlendirme ve yanıt boyutu kontrollerinden geçer. Bir yayın öncesinde `git status` ile kişisel verilerin izlenmediği ayrıca doğrulanmalıdır.
+Tüm kullanıcı verisi `data/` altında tutulur ve `.gitignore` içindedir: profil, ayarlar, üretilen CV'ler, ilan geçmişi ve değerlendirme kayıtları. Bilinen kimlik alanları (ad, telefon, e-posta, adres, fotoğraf, kimlik no) yapay zeka girdilerinden çıkarılır; CV gövdesinde yalnız tanınan mesleki bölümler kullanılır. Serbest metin ve bağlantı parametrelerindeki telefon, e-posta, kimlik numarası, açık adres, fotoğraf ve yerel yol desenleri maskelenir. Desen tabanlı maskeleme en iyi çaba ilkesiyle çalışır ve alışılmadık biçimde yazılmış kişisel bilgiyi kaçırabilir; serbest metin alanlarına kişisel bilgi yazma. İlan URL'leri HTTPS, izinli alan adı, yönlendirme, özel ağ hedefi ve yanıt boyutu kontrollerinden geçer.
 
-Yayın öncesi adımlar için [RELEASE-CHECKLIST.md](RELEASE-CHECKLIST.md), teknik güvenlik sınırları için [SECURITY.md](SECURITY.md) dosyalarına bakın.
+Yayın öncesi adımlar için [RELEASE-CHECKLIST.md](RELEASE-CHECKLIST.md), teknik güvenlik sınırları için [SECURITY.md](SECURITY.md) dosyalarına bak.
 
 ### Lisans
 

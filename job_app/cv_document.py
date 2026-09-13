@@ -1,11 +1,13 @@
 """Yapılandırılabilir, ATS öncelikli tek sütunlu CV üreticisi.
 
-Önce ``examples/profile.example.json`` dosyasını ``data/profile.json`` olarak kopyalayıp kendi
-doğrulanmış bilgilerinle doldur. Bu dosyada örnek kişisel veri bulunmaz.
+``data/profile.json`` dosyasını okur. Bu dosyayı en kolay yol, uygulamadaki yapay zeka
+başlangıç yönergesini (``docs/AGENT-ONBOARDING.md``) bir ajana vermektir; elle hazırlamak
+için ``examples/profile.example.json`` şablonu kullanılabilir.
 """
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 from docx import Document
@@ -14,6 +16,10 @@ from docx.enum.text import WD_TAB_ALIGNMENT
 from docx.oxml.ns import qn
 from docx.shared import Cm, Pt
 from job_app.storage import data_dir, data_file, load_json
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
 
 OUT = data_dir("cv-versions")
 PROFILE_FILE = data_file("profile.json")

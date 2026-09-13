@@ -627,9 +627,10 @@ First personal setup
 Before detailed evaluation, give your preferred AI the onboarding instruction
 below. It interviews you about target roles, education, real experience and
 projects; if you hand it your existing CV it reads that first and only asks for
-what is missing. It never invents experience. Save its verified output as
-data/profile.json and data/candidate-evidence.json. Both stay local and are
-ignored by Git.
+what is missing. It is told never to invent experience, but models can still
+overstate: read both files once and correct anything that is not true. Save
+the output as data/profile.json and data/candidate-evidence.json. Both stay
+local and are ignored by Git.
 
 Using an agent that can read files
 
@@ -662,8 +663,9 @@ bölümünden birini seçebilir veya {{prompt}} yer tutuculu kendi komutunu yaza
 Detaylı elemeye başlamadan önce tercih ettiğin yapay zekaya aşağıdaki başlangıç
 yönergesini ver. Yönerge sana hedef rollerini, eğitimini, gerçek deneyim ve
 projelerini sorar; mevcut CV'ni verirsen önce onu okur ve yalnız eksik kalanları
-sorar. Olmayan deneyimi asla uydurmaz. Doğrulanmış çıktıyı data/profile.json ve
-data/candidate-evidence.json olarak kaydet. İki dosya da yerelde kalır ve Git'e
+sorar. Olmayan deneyimi uydurmaması açıkça istenir ama modeller yine de abartabilir:
+iki dosyayı bir kez okuyup doğru olmayan her şeyi düzelt. Çıktıyı data/profile.json
+ve data/candidate-evidence.json olarak kaydet. İki dosya da yerelde kalır ve Git'e
 eklenmez.
 
 Dosya okuyabilen bir ajan kullanıyorsan

@@ -1,8 +1,9 @@
 # Yayın öncesi kontrol listesi
 
 - [x] Lisans seçildi ve `LICENSE` dosyası eklendi.
-- [ ] `data/`, gerçek CV'ler, profil, ekran görüntüsü ve API anahtarları kaynak klasöründe yok.
-- [ ] `python -m unittest discover -s tests -v` başarılı.
+- [x] `data/`, gerçek CV'ler, profil, ekran görüntüsü ve API anahtarları Git'te izlenmiyor (`data/` gitignore'da; değişiklikler kişisel veri için tarandı).
+- [x] `python -m unittest discover -s tests -v` başarılı.
+- [x] Yapay zeka başlangıç yönergesi gerçek bir kullanıcı verisiyle Hermes'e verildi; üretilen `profile.json` ve `candidate-evidence.json` uygulamanın okuma fonksiyonlarından geçti, ardından detaylı eleme, CV üretimi, CV uyumu ve ilana özel CV uçtan uca çalıştı.
 - [ ] `scripts\setup.bat` ve `scripts\start.bat` temiz bir Windows hesabında denendi.
 - [ ] `scripts/setup.sh` ve `scripts/start.sh` Linux/macOS üzerinde denendi.
 - [ ] `job_app/migration.py`, eski Türkçe adlandırmalı gerçek veriyle denendi; dosya adları ve JSON anahtarları veri kaybı olmadan yeni şemaya taşınıyor.

@@ -115,6 +115,16 @@ Gemini CLI, Pi ve Cursor için doğrulanmış ad **bilinçli olarak yazılmadı*
 5. `codex` 13 Eylül'de Codex masaüstü uygulamasının içindeki `codex.exe` ile canlı doğrulandı (ön eleme şeması, `gpt-5.6-luna` / `gpt-5.5`); ancak masaüstü uygulaması PATH'e eklemediği için otomatik tespit edilmiyor. `cursor-agent` kurulu değil; profili canlı doğrulanmadı. `gemini` kurulu ama hesabı uygun değil (`IneligibleTierError`), `pi` eklenti hatası veriyor. Canlı doğrulananlar: **hermes, claude, agy**.
 6. `SECURITY.md` gözden geçirildi, değişiklik gerekmedi.
 
+## Gerçek kullanıcı verisiyle uçtan uca test (14 Eylül 2026)
+
+Başlangıç yönergesi, kullanıcının kariyer notlarının kopyasıyla Hermes'e (`--provider anthropic -m claude-sonnet-4-6`, `chat --query-file --oneshot`) verildi. Kaynak vault'a yazılmadı (değiştirilme zamanlarıyla doğrulandı).
+
+- Hermes `profile.json`, `candidate-evidence.json` yazdı ve `settings.json` içinde yalnız hedef alanlarını güncelledi; dosyalar `candidate_facts()`, `cv_focus_options()` ve `cv_document` okumasından geçti.
+- Sonra sırasıyla çalıştı: detaylı eleme (4 ilan, 0 hata, 66 sn), `build-cv`, `cv-match` (20 sn), `cv-for-job`.
+- **İçerik abartısı görüldü:** mezun olmamış kişiye "graduate", kaynakta olmayan "Git" ve "Firebase authentication", "171 testi yazdı" gibi sahiplik varsayımı, kullanıcının gereksiz dediği `data_analyst` varyantı. Yönergenin 0.3 kuralı bu dört örnekle sıkılaştırıldı; arayüz ve README artık "iki dosyayı bir kez oku" diyor.
+- **Hermes sağlayıcı tuzağı:** Hermes'in kendi varsayılanı Gemini'ydi (anahtar geçersiz) ve yönerge doğrudan `hermes` ile verilince hemen düştü. Uygulama her çağrıda `--provider anthropic` gönderdiği için uygulama içinden sorun yok; ancak Anthropic dışı sağlayıcı kullanan Hermes kullanıcısı `data/settings.json` içinde `ai_provider` ayarlamalı. Arayüzde bu alan yok (README'de belgelendi).
+- **Konsol kodlaması:** `cv_document.py` ve `cv_for_job.py` stdout'u UTF-8'e çevirmiyordu; arayüz çıktıyı UTF-8 okuduğu için Türkçe karakterli klasörde "CV oluşturuldu" mesajındaki yol bozuk görünüyordu. Diğer modüllerle aynı `reconfigure` bloğu eklendi.
+
 ## Devam ederken çalıştırılacaklar
 
 ```bash

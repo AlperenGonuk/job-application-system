@@ -7,11 +7,16 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 from datetime import datetime
 from pathlib import Path
 
 from job_app.cv_document import build_cv
 from job_app.storage import data_file, load_json, write_json
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
 
 MATCH_FILE = data_file("detailed-review-state.json")
 DECISIONS_FILE = data_file("cv-selections.json")
