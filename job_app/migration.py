@@ -11,6 +11,7 @@ atlanır. Tamamlandığında ``data/.migration-done`` işaretçisi yazılır.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from pathlib import Path
 
@@ -142,10 +143,76 @@ def _rewrite(path: Path) -> None:
         write_json(path, converted)
 
 
+def _normalized(path: Path | str) -> str:
+    return os.path.normcase(os.path.abspath(str(path)))
+
+
+def _relocations() -> list[tuple[Path, Path, tuple[str, str] | None]]:
+    """Taşınan klasörlerin eski konumları -> yeni konum eşlemesi.
+
+    Klasörler hem proje kökünden hem de ``data/`` altındaki Türkçe addan
+    ``data/<yeni ad>`` konumuna taşınır.
+    """
+    pairs = []
+    for legacy_name, (new_name, prefix) in DIRECTORY_RENAMES.items():
+        for old_base in (ROOT / legacy_name, DATA_DIR / legacy_name):
+            pairs.append((old_base, DATA_DIR / new_name, prefix))
+    return pairs
+
+
+def relocated_path(stored: str) -> Path | None:
+    """Eski bir klasörü gösteren kayıtlı yolun taşıma sonrası karşılığı.
+
+    Yalnız şu koşulların hepsi sağlanırsa yeni yol döner; aksi halde None:
+    - yol taşınan eski klasörlerden birinin içindedir,
+    - eski dosya artık yoktur (çakışma nedeniyle yerinde kaldıysa dokunulmaz),
+    - yeni yol hedef klasörün içinde kalır ve dosya gerçekten oradadır.
+    """
+    if not stored:
+        return None
+    absolute = os.path.abspath(stored)
+    for old_base, new_base, prefix in _relocations():
+        base = os.path.abspath(str(old_base))
+        if not _normalized(absolute).startswith(_normalized(base) + os.sep):
+            continue
+        parts = list(Path(absolute[len(base) + 1:]).parts)
+        if not parts or Path(absolute).exists():
+            return None
+        if prefix and len(parts) == 1 and parts[0].startswith(prefix[0]):
+            parts[0] = prefix[1] + parts[0][len(prefix[0]):]
+        candidate = new_base.joinpath(*parts)
+        if not _normalized(candidate).startswith(_normalized(new_base) + os.sep):
+            return None
+        return candidate if candidate.is_file() else None
+    return None
+
+
+def update_path_references() -> int:
+    """cv-selections.json içindeki üretilmiş CV yollarını yeni konuma çevirir."""
+    path = DATA_DIR / "cv-selections.json"
+    data = load_json(path, None)
+    if not isinstance(data, dict):
+        return 0
+    updated = 0
+    for entry in data.values():
+        if not isinstance(entry, dict) or not isinstance(entry.get("generated_file"), str):
+            continue
+        new_path = relocated_path(entry["generated_file"])
+        if new_path is not None:
+            entry["generated_file"] = str(new_path)
+            updated += 1
+    if updated:
+        write_json(path, data)
+    return updated
+
+
 def run(*, force: bool = False) -> dict:
     """Taşımayı yürütür ve neyin taşındığını özetler."""
     if MARKER_FILE.exists() and not force:
-        return {"skipped": True}
+        # Önceki bir taşıma CV'leri taşıyıp kayıtlı yolları eski konumda
+        # bırakmış olabilir. Tam taşıma yeniden çalışmaz; yalnız bu yollar
+        # onarılır. İşlem idempotenttir: onarılacak kayıt yoksa dosya yazılmaz.
+        return {"skipped": True, "path_references": update_path_references()}
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     moved_files, moved_dirs = [], []
 
@@ -177,8 +244,11 @@ def run(*, force: bool = False) -> dict:
         _rewrite(path)
         rewritten += 1
 
+    # 5) Kayıtlı dosya yolları taşınan klasörlerin yeni konumuna çevrilir.
+    path_references = update_path_references()
+
     MARKER_FILE.write_text(json.dumps({"files": moved_files, "directories": moved_dirs}, ensure_ascii=False, indent=2), encoding="utf-8")
-    return {"skipped": False, "files": moved_files, "directories": moved_dirs, "rewritten": rewritten}
+    return {"skipped": False, "files": moved_files, "directories": moved_dirs, "rewritten": rewritten, "path_references": path_references}
 
 
 def main() -> None:

@@ -114,7 +114,10 @@ def run_agent(
         )
 
     safe_prompt = NO_TOOL_PREAMBLE + scrub_text(prompt)
-    command, stdin_text = ai_agents.build_command(agent, safe_prompt, task=task, settings=settings)
+    try:
+        command, stdin_text = ai_agents.build_command(agent, safe_prompt, task=task, settings=settings)
+    except ValueError as error:  # CommandTransportError dahil: istem kırpılmaz, iş durur
+        raise AgentError(str(error)) from error
     if stdin_text is None and len(safe_prompt) > ai_agents.MAX_ARGUMENT_PROMPT:
         raise AgentError(
             f"İstem bu ajan için fazla uzun ({len(safe_prompt)} karakter). "

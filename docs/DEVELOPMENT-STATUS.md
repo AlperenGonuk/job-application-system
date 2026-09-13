@@ -1,15 +1,15 @@
 # Geliştirme durumu — İngilizceleştirme ve çoklu ajan çalışması
 
 > Bu dosya yarım kalan çalışmayı başka bir oturumda devralmak içindir.
-> **Yeni oturumda önce bu dosyayı oku.** Son güncelleme: 11 Eylül 2026.
+> **Yeni oturumda önce bu dosyayı oku.** Son güncelleme: 14 Eylül 2026.
 
 ## Durum özeti
 
 | | |
 |---|---|
-| Dal | `feature/english-naming-and-multi-agent` (`main`'den ayrıldı) |
-| Commit | **Yok.** 33 dosyalık değişiklik çalışma ağacında duruyor |
-| Testler | 32/32 geçiyor (`python -m unittest discover -s tests`) |
+| Dal | `feature/english-naming-and-multi-agent` → `main`'e birleştirildi |
+| Commit | Commit'lendi ve GitHub'a gönderildi |
+| Testler | 49/49 geçiyor (`python -m unittest discover -s tests`) |
 | Arayüz | Açılıyor, Ayarlar penceresi dahil doğrulandı |
 | Uçtan uca | Ön eleme Antigravity (`agy`) ile gerçek veriyle koştu |
 
@@ -108,19 +108,19 @@ Gemini CLI, Pi ve Cursor için doğrulanmış ad **bilinçli olarak yazılmadı*
 
 ## Yapılmayanlar / sıradaki adımlar
 
-1. **Commit atılmadı.** Kullanıcı istemedi. 33 dosya çalışma ağacında.
+1. **Detaylı eleme kanıt dosyası olmadan erken durur.** `data/candidate-evidence.json` yoksa hiçbir ilan indirilmeden ve kaydedilmeden tek hatayla çıkar (önceden her ilan için ayrı hata veriyor, kısa metinli ilanları kanıtsız kaydedebiliyordu).
 2. **`.exe` derlemesi denenmedi** — PyInstaller kurulu değil. `pip install pyinstaller && python scripts/build_exe.py`. Paketlenmiş sürümde alt görevler exe'yi kendi adıyla yeniden çağırır (`task_command()` içinde `sys.frozen` dalı); bu yol **henüz gerçek bir exe ile test edilmedi**.
 3. **Detaylı eleme uçtan uca denenmedi** — `data/candidate-evidence.json` yok. Kullanıcı önce onboarding yönergesiyle profilini oluşturmalı.
 4. **Linux/macOS script'leri denenmedi** (bu makine Windows).
-5. `codex`, `cursor-agent` bu makinede kurulu değil; profilleri canlı doğrulanmadı. `gemini` kurulu ama hesabı uygun değil (`IneligibleTierError`), `pi` eklenti hatası veriyor. Canlı doğrulananlar: **hermes, claude, agy**.
+5. `codex` 13 Eylül'de Codex masaüstü uygulamasının içindeki `codex.exe` ile canlı doğrulandı (ön eleme şeması, `gpt-5.6-luna` / `gpt-5.5`); ancak masaüstü uygulaması PATH'e eklemediği için otomatik tespit edilmiyor. `cursor-agent` kurulu değil; profili canlı doğrulanmadı. `gemini` kurulu ama hesabı uygun değil (`IneligibleTierError`), `pi` eklenti hatası veriyor. Canlı doğrulananlar: **hermes, claude, agy**.
 6. `SECURITY.md` gözden geçirildi, değişiklik gerekmedi.
 
 ## Devam ederken çalıştırılacaklar
 
 ```bash
 cd "D:\İş Başvuru Sistemi - Açık Kaynak"
-git status                                     # 33 dosya, commit yok
-.venv/Scripts/python -m unittest discover -s tests   # 32 test geçmeli
+git status
+.venv/Scripts/python -m unittest discover -s tests   # 49 test geçmeli
 .venv/Scripts/python main.py                   # arayüz
 .venv/Scripts/python main.py collect           # ilan topla (AI'sız)
 .venv/Scripts/python main.py initial-review --limit 3

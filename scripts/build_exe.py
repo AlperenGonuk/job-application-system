@@ -16,15 +16,30 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from main import TASKS  # noqa: E402  (kök dizin yola eklendikten sonra)
+
 SEPARATOR = ";" if sys.platform.startswith("win") else ":"
 APP_NAME = "JobApplicationSystem"
 
 
-def main() -> None:
-    if shutil.which("pyinstaller") is None:
-        raise SystemExit("PyInstaller bulunamadı. Kurmak için: pip install pyinstaller")
+def hidden_imports() -> list[str]:
+    """Paket içine zorla alınacak modüller.
+
+    Görev modülleri ``main.py`` içinde ``importlib.import_module`` ile adından
+    yüklenir; PyInstaller bu dinamik içe aktarmaları statik analizle göremez.
+    Liste doğrudan ``main.TASKS`` kaynağından üretildiği için yeni görev
+    eklendiğinde ayrıca güncellenmesi gerekmez.
+    """
+    return sorted(set(TASKS.values()))
+
+
+def pyinstaller_command() -> list[str]:
+    """PyInstaller komut satırını üretir."""
     command = [
-        "pyinstaller",
+        sys.executable, "-m", "PyInstaller",
         "--noconfirm",
         "--clean",
         "--onefile",
@@ -32,11 +47,28 @@ def main() -> None:
         "--name", APP_NAME,
         "--add-data", f"{ROOT / 'docs'}{SEPARATOR}docs",
         "--add-data", f"{ROOT / 'examples'}{SEPARATOR}examples",
+        "--paths", str(ROOT),
+        # Görev modüllerinin kendi alt içe aktarmaları da güvenceye alınır.
+        "--collect-submodules", "job_app",
         "--distpath", str(ROOT / "dist"),
         "--workpath", str(ROOT / "build"),
         "--specpath", str(ROOT / "build"),
-        str(ROOT / "main.py"),
     ]
+    for module in hidden_imports():
+        command += ["--hidden-import", module]
+    command.append(str(ROOT / "main.py"))
+    return command
+
+
+def main() -> None:
+    command = pyinstaller_command()
+    try:
+        import PyInstaller  # noqa: F401
+    except ImportError:
+        executable = shutil.which("pyinstaller")
+        if executable is None:
+            raise SystemExit("PyInstaller bulunamadı. Kurmak için: pip install pyinstaller")
+        command = [executable, *command[3:]]
     subprocess.run(command, check=True, cwd=ROOT)
     print(f"Hazır: {ROOT / 'dist'}")
 

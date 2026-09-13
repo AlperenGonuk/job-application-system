@@ -25,8 +25,8 @@ A privacy-first local desktop app for collecting public job listings, tracking a
 ### Quick start
 
 1. Install Python 3.11+ and LibreOffice if you want to view DOCX files in the app. Linux and macOS are also supported: DOCX files open with LibreOffice when installed, or the OS default handler otherwise.
-2. Set up a virtual environment and install dependencies: on Windows run `scripts\setup.bat`, on Linux/macOS run `./scripts/setup.sh`.
-3. Start the app: `scripts\start.bat` (Windows) or `./scripts/start.sh` (Linux/macOS), or run `python main.py` directly.
+2. Set up a virtual environment and install dependencies: on Windows run `scripts\setup.bat`, on Linux/macOS run `./scripts/setup.sh` (or `bash scripts/setup.sh` if your checkout lost the executable bit).
+3. Start the app: `scripts\start.bat` (Windows) or `./scripts/start.sh` (Linux/macOS; alternatively `bash scripts/start.sh`), or run `python main.py` directly.
 4. The app creates the `data` folder locally. Copy `examples/profile.example.json` to `data/profile.json` and add only truthful, verified information.
 5. Copy `examples/candidate-evidence.example.json` to `data/candidate-evidence.json` and add evidence for CV and job-review workflows.
 6. Run `python main.py build-cv` to create base Turkish and English CVs.
@@ -84,7 +84,7 @@ data/                       # user data, gitignored
 
 ### Privacy and security
 
-All user data lives under `data/` and is excluded by `.gitignore`: profile, settings, generated CVs, job history, and review results. Phone numbers, emails, addresses, photos, and local paths are excluded from AI comparison inputs. Job URLs are checked for HTTPS, allowed host, redirects, private-network destinations, and response-size limits.
+All user data lives under `data/` and is excluded by `.gitignore`: profile, settings, generated CVs, job history, and review results. Known identity fields (name, phone, email, address, photo, ID number) are removed from AI inputs, only recognized career sections of a CV are used, and free text plus URL parameters are scrubbed with pattern-based masking for phone numbers, emails, ID numbers, street addresses, photos, and local paths. Pattern-based masking is best effort and can miss unusually formatted personal data, so keep personal details out of free-text fields. Job URLs are checked for HTTPS, allowed host, redirects, private-network destinations, and response-size limits.
 
 See [RELEASE-CHECKLIST.md](RELEASE-CHECKLIST.md) for release checks and [SECURITY.md](SECURITY.md) for technical security boundaries. Released under the [MIT License](LICENSE).
 
@@ -113,8 +113,8 @@ Windows için yerel iş ilanı ve CV takip aracı. İlan taramalarını saklar, 
 ### İlk kurulum
 
 1. Python 3.11+ ve LibreOffice (DOCX görüntülemek için) kurun. Linux ve macOS da desteklenir: DOCX dosyaları kuruluysa LibreOffice, değilse işletim sisteminin varsayılan programıyla açılır.
-2. Sanal ortamı kurup bağımlılıkları yüklemek için Windows'ta `scripts\setup.bat`, Linux/macOS'ta `./scripts/setup.sh` çalıştırın.
-3. Uygulamayı başlatmak için Windows'ta `scripts\start.bat`, Linux/macOS'ta `./scripts/start.sh` çalıştırın; ya da doğrudan `python main.py` komutunu kullanın.
+2. Sanal ortamı kurup bağımlılıkları yüklemek için Windows'ta `scripts\setup.bat`, Linux/macOS'ta `./scripts/setup.sh` çalıştırın (çalıştırma izni kaybolduysa `bash scripts/setup.sh`).
+3. Uygulamayı başlatmak için Windows'ta `scripts\start.bat`, Linux/macOS'ta `./scripts/start.sh` (ya da `bash scripts/start.sh`) çalıştırın; ya da doğrudan `python main.py` komutunu kullanın.
 4. Uygulama `data` klasörünü yerelde oluşturur. `examples/profile.example.json` dosyasını `data/profile.json` olarak kopyalayın; yalnız gerçek ve doğrulanmış bilgilerinizi yazın.
 5. `examples/candidate-evidence.example.json` dosyasını `data/candidate-evidence.json` olarak kopyalayın; değerlendirmede kullanılabilecek doğrulanmış kanıtları ekleyin.
 6. `python main.py build-cv` ile temel TR/EN CV'leri oluşturun.
@@ -172,7 +172,7 @@ data/                       # kullanıcı verisi, gitignore'da
 
 ### Gizlilik
 
-Tüm kullanıcı verisi `data/` altında tutulur ve `.gitignore` içindedir: profil, ayarlar, üretilen CV'ler, ilan geçmişi ve değerlendirme kayıtları. Kişisel kimlik (telefon, e-posta, açık adres, fotoğraf/yol) verileri yapay zeka karşılaştırmalarına gönderilmez; CV gövdesinde yalnız tanınan mesleki bölümler kullanılır. İlan URL'leri HTTPS, izinli alan adı, yönlendirme ve yanıt boyutu kontrollerinden geçer. Bir yayın öncesinde `git status` ile kişisel verilerin izlenmediği ayrıca doğrulanmalıdır.
+Tüm kullanıcı verisi `data/` altında tutulur ve `.gitignore` içindedir: profil, ayarlar, üretilen CV'ler, ilan geçmişi ve değerlendirme kayıtları. Bilinen kimlik alanları (ad, telefon, e-posta, adres, fotoğraf, kimlik no) yapay zeka girdilerinden çıkarılır; CV gövdesinde yalnız tanınan mesleki bölümler kullanılır. Serbest metin ve bağlantı parametrelerindeki telefon, e-posta, kimlik numarası, açık adres, fotoğraf ve yerel yol desenleri maskelenir. Desen tabanlı maskeleme en iyi çaba ilkesiyle çalışır ve alışılmadık biçimde yazılmış kişisel bilgiyi kaçırabilir; serbest metin alanlarına kişisel bilgi yazmayın. İlan URL'leri HTTPS, izinli alan adı, yönlendirme ve yanıt boyutu kontrollerinden geçer. Bir yayın öncesinde `git status` ile kişisel verilerin izlenmediği ayrıca doğrulanmalıdır.
 
 Yayın öncesi adımlar için [RELEASE-CHECKLIST.md](RELEASE-CHECKLIST.md), teknik güvenlik sınırları için [SECURITY.md](SECURITY.md) dosyalarına bakın.
 

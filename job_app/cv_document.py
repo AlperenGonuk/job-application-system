@@ -18,6 +18,14 @@ from job_app.storage import data_dir, data_file, load_json
 OUT = data_dir("cv-versions")
 PROFILE_FILE = data_file("profile.json")
 
+# Bölüm başlıkları: profil, deneyim, projeler, eğitim, beceriler, diller.
+# cv_match bu başlıkları mesleki bölüm olarak tanır; iki modül aynı listeyi
+# kullanmazsa üretilen CV'nin bir bölümü yapay zeka yükünden sessizce düşer.
+SECTION_LABELS = {
+    "TR": ("Profil", "Deneyim", "Projeler", "Eğitim", "Teknik Beceriler", "Diller"),
+    "EN": ("Profile", "Experience", "Projects", "Education", "Technical Skills", "Languages"),
+}
+
 
 def load_profile() -> dict:
     if not PROFILE_FILE.exists():
@@ -121,7 +129,7 @@ def build_cv(language: str, focus: str = "general", filename: str | None = None)
     doc = Document()
     style_document(doc)
     add_header(doc, language, profile["identity"], content)
-    labels = {"TR": ("Profil", "Deneyim", "Projeler", "Eğitim", "Teknik Beceriler", "Diller"), "EN": ("Profile", "Experience", "Projects", "Education", "Technical Skills", "Languages")}[language]
+    labels = SECTION_LABELS[language]
     add_section(doc, labels[0])
     add_text(doc.add_paragraph(), content.get("summary", ""), 9.8)
     for label, key in ((labels[1], "experience"), (labels[2], "projects")):

@@ -13,6 +13,7 @@ from pathlib import Path
 from docx import Document
 
 from job_app.ai_runner import run_agent
+from job_app.cv_document import SECTION_LABELS
 from job_app.review_initial import all_jobs
 from job_app.review_detailed import fetch_description
 from job_app.dedupe import fingerprint
@@ -37,8 +38,19 @@ PHONE_OR_CONTACT_PATTERN = re.compile(
     r"(linkedin\.com[^\s]*)|(github\.com[^\s]*)",
     re.I,
 )
+# Üretici (cv_document) başlıkları her zaman tanınır; elle hazırlanmış CV'ler
+# için yaygın eş anlamlılar da listededir.
+_SECTION_ALIASES = (
+    "profil", "profile", "özet", "summary", "professional summary", "about",
+    "experience", "work experience", "deneyim", "iş deneyimi",
+    "project", "projects", "proje", "projeler",
+    "education", "eğitim", "technical skills", "teknik beceriler", "skills", "beceriler",
+    "languages", "diller",
+)
 CAREER_SECTION = re.compile(
-    r"^(profil|özet|summary|experience|deneyim|projects?|projeler?|education|eğitim|technical skills|teknik beceriler|skills|beceriler|languages|diller)$",
+    r"^(" + "|".join(re.escape(label) for label in dict.fromkeys(
+        (*_SECTION_ALIASES, *(label for labels in SECTION_LABELS.values() for label in labels))
+    )) + r")$",
     re.I,
 )
 

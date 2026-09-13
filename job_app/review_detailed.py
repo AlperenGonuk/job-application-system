@@ -222,6 +222,11 @@ def main() -> None:
     parser.add_argument("--mode", choices=tuple(MODE_RULES), default="strict", help="Detaylı eleme karar eşiği")
     args = parser.parse_args()
 
+    # Kanıt dosyası yoksa hiçbir ilanı indirmeden ve kaydetmeden dur. Aksi halde
+    # kısa metinli ilanlar kanıtsız "review_manually" olarak kaydedilir ve dosya
+    # sonradan oluşturulsa bile aynı modda bir daha değerlendirilmez.
+    candidate_facts()
+
     acquire_lock()
     try:
         initial_state = load_json(INITIAL_STATE_FILE, {})

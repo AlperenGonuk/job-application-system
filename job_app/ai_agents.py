@@ -7,8 +7,11 @@ karar mantığı ve istem metinleri değişmez.
 """
 from __future__ import annotations
 
+import os
+import re
 import shlex
 import shutil
+from pathlib import Path
 
 # Otomatik seçimde denenme sırası
 DETECTION_ORDER = ("hermes", "claude", "codex", "agy", "gemini", "pi", "cursor-agent")
@@ -192,6 +195,85 @@ def resolve_executable(name: str) -> str:
     return shutil.which(name) or name
 
 
+class CommandTransportError(ValueError):
+    """İstem, komut satırında kayıpsız ve güvenli biçimde taşınamıyor."""
+
+
+# Windows'ta .cmd/.bat dosyaları her zaman cmd.exe üzerinden yorumlanır. cmd.exe
+# argümanı satır sonunda keser (istemin yalnız ilk satırı gider) ve ", &, |, %,
+# ^ gibi karakterleri komut olarak yorumlayabilir; ilan metni güvenilmeyen veri
+# olduğu için bu bir komut enjeksiyonu yoludur. Bu yüzden yalnız bu güvenli
+# kümeden oluşan argümanlar cmd.exe'ye bırakılır.
+_BATCH_SUFFIXES = frozenset({".cmd", ".bat"})
+_CMD_INTERPRETERS = frozenset({"cmd", "cmd.exe"})
+# fullmatch ile kullanılır: "$" sondaki satır sonunu kabul ettiği için match yetmez.
+_CMD_SAFE_ARGUMENT = re.compile(r"[A-Za-z0-9 _\-.:/\\=@+,]*")
+# npm cmd-shim biçimi: "%dp0%\node_modules\paket\cli.js" %*  (eski: "%~dp0\...")
+_SHIM_TARGET = re.compile(r'"%(?:~dp0|dp0%)\\(?P<target>[^"%\r\n]+)"\s*%\*', re.IGNORECASE)
+_NODE_SCRIPT_SUFFIXES = frozenset({".js", ".mjs", ".cjs"})
+
+
+def _runs_through_cmd(executable: str) -> bool:
+    if os.name != "nt":
+        return False
+    path = Path(executable)
+    return path.suffix.lower() in _BATCH_SUFFIXES or path.name.lower() in _CMD_INTERPRETERS
+
+
+def resolve_batch_shim(shim: Path) -> list[str] | None:
+    """npm'in ürettiği .cmd kısayolunun çağırdığı gerçek programı bulur.
+
+    Yalnız tek hedefli standart cmd-shim biçimi tanınır. Hedef bir Node betiğiyse
+    ``[node, betik]``, doğrudan bir .exe ise ``[exe]`` döner. Tanınmayan her
+    durumda None döner; tahmin yapılmaz.
+    """
+    try:
+        content = shim.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    targets = {match.group("target").strip() for match in _SHIM_TARGET.finditer(content)}
+    if len(targets) != 1:
+        return None
+    target = Path(os.path.normpath(shim.parent / targets.pop()))
+    if not target.is_file():
+        return None
+    suffix = target.suffix.lower()
+    if suffix == ".exe":
+        return [str(target)]
+    if suffix in _NODE_SCRIPT_SUFFIXES:
+        bundled = shim.parent / "node.exe"
+        node = str(bundled) if bundled.is_file() else shutil.which("node")
+        return [node, str(target)] if node else None
+    return None
+
+
+def safe_command(command: list[str]) -> list[str]:
+    """Komutu, argümanları cmd.exe yorumlamasına maruz kalmayacak biçime getirir.
+
+    - cmd.exe'den geçmeyen komutlar olduğu gibi döner (argümanlar doğrudan
+      CreateProcess/exec ile, kabuk olmadan iletilir).
+    - .cmd/.bat komutunun tüm argümanları güvenli kümedeyse olduğu gibi döner.
+    - Aksi halde npm kısayolu çözülür ve alttaki program kabuksuz çağrılır.
+    - Çözülemezse istem kırpılmak yerine açık bir hatayla durulur.
+    """
+    if not command or not _runs_through_cmd(command[0]):
+        return command
+    arguments = command[1:]
+    if all(_CMD_SAFE_ARGUMENT.fullmatch(argument) for argument in arguments):
+        return command
+    if Path(command[0]).suffix.lower() in _BATCH_SUFFIXES:
+        target = resolve_batch_shim(Path(command[0]))
+        if target:
+            return [*target, *arguments]
+    raise CommandTransportError(
+        f"'{Path(command[0]).name}' bir Windows toplu iş dosyası (cmd.exe üzerinden çalışır). "
+        "İstem çok satırlı metin ve özel karakterler içerdiği için bu yoldan kayıpsız ve "
+        "güvenli gönderilemez. Standart girişi kullanan bir ajan seçin, özel komuttan "
+        "{prompt} yer tutucusunu kaldırın (istem standart girişten gider) veya komutta "
+        "doğrudan gerçek programı (.exe ya da node betik.js) belirtin."
+    )
+
+
 def _expand(template: list[str], values: dict[str, str]) -> list[str]:
     """Şablondaki yer tutucuları doldurur; değeri boşsa parçayı tamamen atar."""
     if not template:
@@ -203,16 +285,23 @@ def _expand(template: list[str], values: dict[str, str]) -> list[str]:
 
 
 def build_command(agent: str, prompt: str, *, task: str, settings: dict) -> tuple[list[str], str | None]:
-    """Çalıştırılacak komutu ve (varsa) standart girişten gönderilecek istemi üretir."""
+    """Çalıştırılacak komutu ve (varsa) standart girişten gönderilecek istemi üretir.
+
+    Komut hiçbir zaman kabukla (shell=True) çalıştırılmaz; Windows toplu iş
+    dosyaları için ``safe_command`` uygulanır ve taşınamayan istem
+    ``CommandTransportError`` ile reddedilir.
+    """
     if agent == CUSTOM_AGENT:
         template = custom_command(settings)
         if not template:
             raise ValueError("Özel ajan komutu tanımlı değil.")
         parts = shlex.split(template, posix=False)
-        parts[0] = resolve_executable(parts[0])
+        # posix=False tırnakları korur; boşluklu program yolu için yalnız
+        # program adındaki tırnaklar atılır.
+        parts[0] = resolve_executable(parts[0].strip('"'))
         if any("{prompt}" in part for part in parts):
-            return [part.replace("{prompt}", prompt) for part in parts], None
-        return parts, prompt
+            return safe_command([part.replace("{prompt}", prompt) for part in parts]), None
+        return safe_command(parts), prompt
 
     profile = AGENT_PROFILES[agent]
     values = {
@@ -225,6 +314,6 @@ def build_command(agent: str, prompt: str, *, task: str, settings: dict) -> tupl
     command += _expand(profile.get("model_args", []), values)
     command += list(profile.get("base_args", []))
     if profile["prompt_mode"] == "stdin":
-        return command, prompt
+        return safe_command(command), prompt
     command += _expand(profile.get("prompt_args", []), values)
-    return command, None
+    return safe_command(command), None

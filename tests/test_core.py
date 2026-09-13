@@ -1,8 +1,11 @@
 """Çekirdek iş kuralları için ağ/model kullanmayan hızlı kontroller."""
 from __future__ import annotations
 
+import importlib.util
 import io
 import json
+import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -11,17 +14,19 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 
 from docx import Document
 
-from job_app import ai_agents, collect_jobs, migration
+import main
+from job_app import ai_agents, ai_runner, collect_jobs, cv_document, migration
 from job_app import review_detailed as detailed
 from job_app import review_initial as initial
 from job_app.collect_jobs import matches_preferences, preference_mismatches, preference_sources
-from job_app.cv_match import cv_text
+from job_app.cv_match import CAREER_SECTION, cv_text
 from job_app.dedupe import fingerprint
-from job_app.privacy import has_pii, scrub_text
+from job_app.privacy import has_pii, scrub_payload, scrub_text
 from job_app.process import hidden_process_options
 from job_app.ui_app import cities_for_countries, roles_for_sectors
 from job_app.url_guard import URLValidationError, validate_url
@@ -175,6 +180,20 @@ class CoreRulesTest(unittest.TestCase):
             with patch.object(detailed, "EVIDENCE_FILE", evidence):
                 self.assertEqual(detailed.candidate_facts(), {"projects": ["Python API"]})
 
+    def test_detailed_review_stops_before_fetching_when_evidence_missing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with patch.object(detailed, "EVIDENCE_FILE", root / "missing.json"), \
+                 patch.object(detailed, "LOCK_FILE", root / ".lock"), \
+                 patch.object(detailed, "MATCH_FILE", root / "state.json"), \
+                 patch.object(detailed, "fetch_description") as fetch, \
+                 patch.object(sys, "argv", ["review_detailed"]):
+                with self.assertRaises(RuntimeError):
+                    detailed.main()
+                fetch.assert_not_called()
+                self.assertFalse((root / ".lock").exists())
+                self.assertFalse((root / "state.json").exists())
+
 
 class AgentRegistryTest(unittest.TestCase):
     def test_argument_agent_puts_prompt_on_command_line(self):
@@ -245,6 +264,225 @@ class PrivacyTest(unittest.TestCase):
         self.assertIn("E-POSTA GİZLİ", cleaned)
         self.assertFalse(has_pii(cleaned))
 
+    def test_address_in_experience_bullets_is_masked(self):
+        payload = {"experience": [{"title": "Backend Stajyeri", "bullets": [
+            "Adres: Test Mah. Deneme Sok. No: 4",
+            "Ofis ziyareti: Test Mah. Deneme Sok. No: 4 Kadıköy",
+            "Python ile REST API geliştirdim ve PostgreSQL sorgularını hızlandırdım.",
+        ]}]}
+        cleaned = scrub_payload(payload)
+        labeled, unlabeled, professional = cleaned["experience"][0]["bullets"]
+        for text in (labeled, unlabeled):
+            self.assertNotIn("Test Mah", text)
+            self.assertNotIn("Deneme Sok", text)
+            self.assertNotIn("No: 4", text)
+            self.assertIn("[ADRES GİZLİ]", text)
+            self.assertFalse(has_pii(text))
+        self.assertEqual(professional, payload["experience"][0]["bullets"][2])
+        self.assertEqual(cleaned["experience"][0]["title"], "Backend Stajyeri")
+        self.assertTrue(has_pii("Adres: Test Mah. Deneme Sok. No: 4"))
+
+    def test_personal_url_parameters_are_masked(self):
+        url = "https://example.com/?email=test@example.com&phone=05550000000"
+        self.assertTrue(has_pii(url))
+        cleaned = scrub_text(f"Başvuru bağlantısı: {url}")
+        self.assertNotIn("test@example.com", cleaned)
+        self.assertNotIn("05550000000", cleaned)
+        self.assertIn("https://example.com/?email=", cleaned)
+        self.assertFalse(has_pii(cleaned))
+        self.assertNotIn("ada@example.com", scrub_text("https://example.com/u/ada%40example.com#ref"))
+        self.assertNotIn("ada", scrub_text("https://ada:secret@example.com/jobs/1"))
+
+    def test_job_url_identifiers_are_preserved_exactly(self):
+        for url in (
+            "https://www.linkedin.com/jobs/view/4452573928/?refId=abc%3D%3D&trackingId=x%2By&currentJobId=4452573928",
+            "https://boards.greenhouse.io/acme/jobs/5551234567?gh_jid=5551234567",
+            "https://jobs.lever.co/acme/1b2c3d4e-0000-4000-8000-123456789abc?lever-source=LinkedIn",
+            "https://www.kariyer.net/is-ilani/acme-backend-developer-3942211#apply",
+        ):
+            self.assertEqual(scrub_text(url), url)
+            self.assertFalse(has_pii(url))
+
+
+NPM_SHIM = """@ECHO off\r
+GOTO start\r
+:find_dp0\r
+SET dp0=%~dp0\r
+EXIT /b\r
+:start\r
+SETLOCAL\r
+CALL :find_dp0\r
+\r
+IF EXIST "%dp0%\\node.exe" (\r
+  SET "_prog=%dp0%\\node.exe"\r
+) ELSE (\r
+  SET "_prog=node"\r
+  SET PATHEXT=%PATHEXT:;.JS;=;%\r
+)\r
+\r
+endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%dp0%\\node_modules\\fake-agent\\cli.js" %*\r
+"""
+ECHO_ARGV_SCRIPT = "process.stdout.write(JSON.stringify(process.argv.slice(2)));\n"
+
+
+def make_npm_shim(directory: Path, name: str) -> Path:
+    """Gerçek npm cmd-shim biçiminde, argümanları JSON olarak basan sahte ajan."""
+    script = directory / "node_modules" / "fake-agent" / "cli.js"
+    script.parent.mkdir(parents=True, exist_ok=True)
+    script.write_text(ECHO_ARGV_SCRIPT, encoding="utf-8")
+    shim = directory / f"{name}.cmd"
+    shim.write_bytes(NPM_SHIM.encode("ascii"))
+    return shim
+
+
+class AgentTransportTest(unittest.TestCase):
+    """Windows .cmd kısayollarında çok satırlı ve özel karakterli istem taşıma."""
+
+    HOSTILE_JOB_TEXT = (
+        "İlan başlığı: Backend Developer\n"
+        "JOB_TEXT_SENTINEL \"tırnak\" & echo PWNED> pwned.txt & | < > ^ %PATH% !x!\n"
+        "Son satır"
+    )
+
+    def test_old_style_shim_to_native_exe_is_resolved(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = root / "node_modules" / "native" / "bin" / "tool.exe"
+            target.parent.mkdir(parents=True)
+            target.write_bytes(b"")
+            shim = root / "tool.cmd"
+            shim.write_text('@"%~dp0\\node_modules\\native\\bin\\tool.exe"   %*\r\n', encoding="ascii")
+            self.assertEqual(ai_agents.resolve_batch_shim(shim), [str(target)])
+
+    def test_unrecognized_batch_file_is_not_resolved(self):
+        with tempfile.TemporaryDirectory() as directory:
+            shim = Path(directory) / "agent.cmd"
+            shim.write_text("@echo off\r\necho ARGS: %*\r\n", encoding="ascii")
+            self.assertIsNone(ai_agents.resolve_batch_shim(shim))
+
+    @unittest.skipUnless(os.name == "nt", "Windows .cmd davranışı")
+    @unittest.skipUnless(shutil.which("node"), "node gerekli")
+    def test_run_agent_delivers_full_multiline_prompt_through_npm_shim(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            make_npm_shim(root, "gemini")
+            previous = os.getcwd()
+            os.chdir(root)
+            try:
+                with patch.dict(os.environ, {"PATH": f"{root}{os.pathsep}{os.environ.get('PATH', '')}"}), \
+                        patch.object(ai_runner, "LOCK_FILE", root / ".lock"):
+                    output = ai_runner.run_agent(self.HOSTILE_JOB_TEXT, settings={"ai_agent": "gemini"})
+            finally:
+                os.chdir(previous)
+            arguments = json.loads(output)
+            self.assertEqual(arguments[0], "-p")
+            self.assertEqual(arguments[1], ai_runner.NO_TOOL_PREAMBLE + scrub_text(self.HOSTILE_JOB_TEXT))
+            self.assertIn("JOB_TEXT_SENTINEL", arguments[1])
+            self.assertTrue(arguments[1].endswith("Son satır"))
+            self.assertFalse((root / "pwned.txt").exists())
+
+    def test_safe_argument_whitelist_rejects_trailing_newline(self):
+        self.assertIsNotNone(ai_agents._CMD_SAFE_ARGUMENT.fullmatch("claude-sonnet-4-6"))
+        for argument in ("sonnet\n", "sonnet\r\n", "a\nb", "x & y"):
+            self.assertIsNone(ai_agents._CMD_SAFE_ARGUMENT.fullmatch(argument), repr(argument))
+
+    @unittest.skipUnless(os.name == "nt", "Windows .cmd davranışı")
+    def test_batch_with_trailing_newline_argument_is_refused(self):
+        with tempfile.TemporaryDirectory() as directory:
+            shim = Path(directory) / "agent.cmd"
+            shim.write_text("@echo off\r\necho ARGS: %*\r\n", encoding="ascii")
+            with self.assertRaises(ai_agents.CommandTransportError):
+                ai_agents.safe_command([str(shim), "-m", "sonnet\n"])
+
+    @unittest.skipUnless(os.name == "nt", "Windows .cmd davranışı")
+    def test_run_agent_refuses_plain_batch_instead_of_truncating(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "gemini.cmd").write_text('@echo off\r\necho ran> "%~dp0ran.txt"\r\necho ARGS: %*\r\n', encoding="ascii")
+            with patch.dict(os.environ, {"PATH": f"{root}{os.pathsep}{os.environ.get('PATH', '')}"}), \
+                    patch.object(ai_runner, "LOCK_FILE", root / ".lock"):
+                with self.assertRaises(ai_runner.AgentError) as raised:
+                    ai_runner.run_agent(self.HOSTILE_JOB_TEXT, settings={"ai_agent": "gemini"})
+            self.assertIn("gemini.cmd", str(raised.exception).lower())
+            self.assertFalse((root / "ran.txt").exists())
+
+    @unittest.skipUnless(os.name == "nt", "Windows .cmd davranışı")
+    @unittest.skipUnless(shutil.which("node"), "node gerekli")
+    def test_custom_batch_command_with_placeholder_bypasses_cmd(self):
+        with tempfile.TemporaryDirectory() as directory:
+            tools = Path(directory) / "my tools"
+            shim = make_npm_shim(tools, "myagent")
+            settings = {"ai_agent": "custom", "ai_custom_command": f'"{shim}" --text {{prompt}}'}
+            command, stdin_text = ai_agents.build_command("custom", self.HOSTILE_JOB_TEXT, task="fast", settings=settings)
+            self.assertIsNone(stdin_text)
+            self.assertTrue(command[1].endswith("cli.js"))
+            self.assertEqual(command[2:], ["--text", self.HOSTILE_JOB_TEXT])
+            result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", cwd=directory)
+            self.assertEqual(json.loads(result.stdout), ["--text", self.HOSTILE_JOB_TEXT])
+            self.assertFalse((Path(directory) / "pwned.txt").exists())
+
+    @unittest.skipUnless(os.name == "nt", "Windows .cmd davranışı")
+    def test_custom_batch_command_without_placeholder_keeps_stdin(self):
+        with tempfile.TemporaryDirectory() as directory:
+            shim = Path(directory) / "plain.cmd"
+            shim.write_text("@echo off\r\nmore\r\n", encoding="ascii")
+            settings = {"ai_agent": "custom", "ai_custom_command": f"{shim} run"}
+            command, stdin_text = ai_agents.build_command("custom", self.HOSTILE_JOB_TEXT, task="fast", settings=settings)
+            self.assertEqual(command, [str(shim), "run"])
+            self.assertEqual(stdin_text, self.HOSTILE_JOB_TEXT)
+
+
+class BuildExeTest(unittest.TestCase):
+    def test_every_dynamic_task_module_is_bundled(self):
+        spec = importlib.util.spec_from_file_location("build_exe_under_test", ROOT / "scripts" / "build_exe.py")
+        build_exe = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(build_exe)
+        command = build_exe.pyinstaller_command()
+        hidden = {command[index + 1] for index, part in enumerate(command) if part == "--hidden-import"}
+        self.assertLessEqual(set(main.TASKS.values()), hidden)
+        for module in ("job_app.collect_jobs", "job_app.cv_for_job", "job_app.cv_match", "job_app.cv_document"):
+            self.assertIn(module, hidden)
+        for module in main.TASKS.values():
+            self.assertIsNotNone(importlib.util.find_spec(module), module)
+        self.assertEqual(command[command.index("--collect-submodules") + 1], "job_app")
+        self.assertEqual(command[-1], str(ROOT / "main.py"))
+
+
+class CvSectionTest(unittest.TestCase):
+    def test_generator_headings_are_recognized_as_career_sections(self):
+        for labels in cv_document.SECTION_LABELS.values():
+            for label in labels:
+                self.assertTrue(CAREER_SECTION.match(label.upper()), label)
+
+    def test_generated_cv_summary_is_extracted_in_both_languages(self):
+        def content(summary: str) -> dict:
+            return {"headline": "Backend Developer", "summary": summary,
+                    "experience": [{"title": "Intern", "bullets": ["Built REST APIs with Python."]}],
+                    "education": "Computer Engineering", "skills": [{"label": "Backend", "value": "Python, FastAPI"}],
+                    "language": "English (C1)"}
+
+        profile = {
+            "identity": {"name": "Ada Örnek", "email": "ada@example.com", "phone": "+90 555 123 45 67",
+                         "tr_address": "Test Mah. Deneme Sok. No: 4", "international_location": "Istanbul, Türkiye"},
+            "cv_profiles": {"EN": {"general": content("EN_SUMMARY_SENTINEL builds reliable services.")},
+                            "TR": {"general": content("TR_SUMMARY_SENTINEL güvenilir servisler geliştirir.")}},
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            profile_file = root / "profile.json"
+            profile_file.write_text(json.dumps(profile, ensure_ascii=False), encoding="utf-8")
+            with patch.object(cv_document, "OUT", root / "cv-versions"), patch.object(cv_document, "PROFILE_FILE", profile_file):
+                texts = {language: cv_text(cv_document.build_cv(language)) for language in ("EN", "TR")}
+        self.assertIn("PROFILE", texts["EN"])
+        self.assertIn("EN_SUMMARY_SENTINEL", texts["EN"])
+        self.assertIn("TR_SUMMARY_SENTINEL", texts["TR"])
+        for text in texts.values():
+            self.assertIn("Built REST APIs", text)
+            self.assertIn("Python, FastAPI", text)
+            self.assertNotIn("Ada Örnek", text)
+            self.assertNotIn("Deneme", text)
+            self.assertFalse(has_pii(text))
+
 
 class HiddenProcessTest(unittest.TestCase):
     def test_windows_gets_no_console_window(self):
@@ -289,6 +527,107 @@ class MigrationTest(unittest.TestCase):
         self.assertIn("general", renamed["cv_profiles"]["TR"])
         self.assertIn("python_backend", renamed["cv_profiles"]["TR"])
         self.assertNotIn("genel", renamed["cv_profiles"]["TR"])
+
+    def test_migration_end_to_end_updates_generated_cv_paths(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            data = root / "data"
+            legacy = data / "CV-Sürümleri"
+            root_legacy = root / "CV-Sürümleri"
+            versions = data / "cv-versions"
+            for folder in (legacy, root_legacy, versions):  # uygulama boş hedefi önceden açabilir
+                folder.mkdir(parents=True)
+            (legacy / "CV-EN-Acme-Backend.docx").write_bytes(b"synthetic-a")
+            (root_legacy / "CV-TR-Beta-Data.docx").write_bytes(b"synthetic-b")
+            (legacy / "CV-TR-Same.docx").write_bytes(b"old-conflict")
+            (versions / "CV-TR-Same.docx").write_bytes(b"new-conflict")
+            outside = root / "elsewhere" / "CV-TR-Other.docx"
+            outside.parent.mkdir()
+            outside.write_bytes(b"synthetic-c")
+            selections = {
+                "url:a": {"cv": "CV-EN-Acme-Backend", "generated_file": str(legacy / "CV-EN-Acme-Backend.docx"),
+                          "match_summary": {"karar": "başvur"}},
+                "url:b": {"cv": "CV-TR-Beta-Data", "generated_file": str(root_legacy / "CV-TR-Beta-Data.docx")},
+                "url:c": {"generated_file": str(outside)},
+                "url:d": {"generated_file": str(legacy / ".." / ".." / "elsewhere" / "CV-TR-Other.docx")},
+                "url:e": {"cv": "CV-TR-TEMEL", "language": "TR"},
+                "url:f": {"generated_file": str(legacy / "CV-TR-Same.docx")},
+            }
+            (data / "arayuz-cv-secimleri.json").write_text(json.dumps(selections, ensure_ascii=False), encoding="utf-8")
+
+            with patch.object(migration, "ROOT", root), patch.object(migration, "DATA_DIR", data), \
+                    patch.object(migration, "MARKER_FILE", data / ".migration-done"):
+                summary = migration.run()
+
+            migrated = json.loads((data / "cv-selections.json").read_text(encoding="utf-8"))
+            self.assertEqual(summary["path_references"], 2)
+            for key, name in (("url:a", "CV-EN-Acme-Backend.docx"), ("url:b", "CV-TR-Beta-Data.docx")):
+                path = Path(migrated[key]["generated_file"])
+                self.assertEqual(path, versions / name)
+                self.assertTrue(path.is_file())
+                # Arayüzün "CV'yi aç" güvenlik kontrolüyle aynı koşul
+                path.resolve().relative_to(versions.resolve())
+            self.assertEqual(migrated["url:a"]["match_summary"], {"decision": "apply"})
+            self.assertEqual(migrated["url:c"]["generated_file"], selections["url:c"]["generated_file"])
+            self.assertEqual(migrated["url:d"]["generated_file"], selections["url:d"]["generated_file"])
+            self.assertEqual(migrated["url:e"], selections["url:e"])
+            # Çakışmada eski dosya yerinde kalır; kayıt başka bir dosyaya çevrilmez.
+            self.assertEqual(migrated["url:f"]["generated_file"], selections["url:f"]["generated_file"])
+            self.assertEqual((versions / "CV-TR-Same.docx").read_bytes(), b"new-conflict")
+            self.assertFalse(root_legacy.exists())
+
+    def test_already_migrated_install_repairs_generated_cv_paths_idempotently(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            data = root / "data"
+            legacy = data / "CV-Sürümleri"
+            root_legacy = root / "CV-Sürümleri"
+            versions = data / "cv-versions"
+            versions.mkdir(parents=True)
+            legacy.mkdir()  # çakışan eski dosya yerinde kalmış
+            # Önceki taşıma dosyaları taşımış ama yolları güncellememiş.
+            (versions / "CV-EN-Acme-Backend.docx").write_bytes(b"moved-a")
+            (versions / "CV-TR-Beta-Data.docx").write_bytes(b"moved-b")
+            (legacy / "CV-TR-Same.docx").write_bytes(b"old-conflict")
+            (versions / "CV-TR-Same.docx").write_bytes(b"new-conflict")
+            outside = root / "elsewhere" / "CV-TR-Other.docx"
+            outside.parent.mkdir()
+            outside.write_bytes(b"outside")
+            (data / ".migration-done").write_text("{}", encoding="utf-8")
+            # Tam taşımanın yeniden çalışmadığını kanıtlayan eski veriler:
+            (data / "profil.json").write_text(json.dumps({"cv_profiles": {}}), encoding="utf-8")
+            selections = {
+                "url:a": {"generated_file": str(legacy / "CV-EN-Acme-Backend.docx"), "match_summary": {"karar": "başvur"}},
+                "url:b": {"generated_file": str(root_legacy / "CV-TR-Beta-Data.docx")},
+                "url:c": {"generated_file": str(outside)},
+                "url:d": {"generated_file": str(legacy / ".." / ".." / "elsewhere" / "CV-TR-Other.docx")},
+                "url:f": {"generated_file": str(legacy / "CV-TR-Same.docx")},
+                "url:g": {"generated_file": str(legacy / "CV-EN-Missing.docx")},
+            }
+            selections_file = data / "cv-selections.json"
+            selections_file.write_text(json.dumps(selections, ensure_ascii=False), encoding="utf-8")
+
+            with patch.object(migration, "ROOT", root), patch.object(migration, "DATA_DIR", data), \
+                    patch.object(migration, "MARKER_FILE", data / ".migration-done"):
+                first = migration.run()
+                repaired_bytes = selections_file.read_bytes()
+                repaired_mtime = selections_file.stat().st_mtime_ns
+                second = migration.run()
+
+            self.assertEqual(first, {"skipped": True, "path_references": 2})
+            self.assertEqual(second, {"skipped": True, "path_references": 0})
+            self.assertEqual(selections_file.read_bytes(), repaired_bytes)
+            self.assertEqual(selections_file.stat().st_mtime_ns, repaired_mtime)
+            repaired = json.loads(repaired_bytes.decode("utf-8"))
+            self.assertEqual(Path(repaired["url:a"]["generated_file"]), versions / "CV-EN-Acme-Backend.docx")
+            self.assertEqual(Path(repaired["url:b"]["generated_file"]), versions / "CV-TR-Beta-Data.docx")
+            for key in ("url:c", "url:d", "url:f", "url:g"):
+                self.assertEqual(repaired[key]["generated_file"], selections[key]["generated_file"], key)
+            # Diğer kullanıcı verisine dokunulmadı: çeviri ve dosya adı taşıma yok.
+            self.assertEqual(repaired["url:a"]["match_summary"], {"karar": "başvur"})
+            self.assertTrue((data / "profil.json").exists())
+            self.assertFalse((data / "profile.json").exists())
+            self.assertEqual((legacy / "CV-TR-Same.docx").read_bytes(), b"old-conflict")
 
 
 if __name__ == "__main__":
