@@ -4,6 +4,8 @@
 
 A privacy-first local desktop app for collecting public job listings, tracking applications, and managing CV workflows on Windows, Linux, and macOS. Job-search data stays on the user's device and application decisions remain fully manual.
 
+> **Platform status:** tested on Windows and Linux. macOS is supported by the code and setup script but has not yet been tested on a real device — reports are welcome.
+
 > This is the public release source. Do not add real CVs, personal job history, model sessions, API keys, or screenshots containing personal information.
 
 ### What it does
@@ -99,6 +101,8 @@ See [RELEASE-CHECKLIST.md](RELEASE-CHECKLIST.md) for release checks and [SECURIT
 ## Türkçe
 
 Windows, Linux ve macOS için yerel iş ilanı ve CV takip aracı. Açık ilanları toplar, tekrar eden ilanları ayıklar, isteğe bağlı yapay zeka değerlendirmesi yürütür ve hangi CV'nin hangi ilana seçildiğini yerelde kaydeder. İş arama verisi bilgisayarında kalır, başvuru kararları tamamen sende.
+
+> **Platform durumu:** Windows ve Linux'ta test edildi. macOS kod ve kurulum betiği tarafından destekleniyor ama henüz gerçek bir cihazda denenmedi — geri bildirimlere açığız.
 
 > Bu depo herkese açık yayın kaynağıdır. Gerçek CV, kişisel ilan geçmişi, model oturumları, API anahtarı veya kişisel bilgi içeren ekran görüntüsü eklenmez.
 

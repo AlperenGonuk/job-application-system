@@ -19,7 +19,7 @@ This tool is designed for local use. It does not apply to jobs automatically, re
 
 ### Reporting a security issue
 
-Do not post screenshots, CVs, or keys containing sensitive information in public issues. Until a private reporting channel is configured, contact the repository owner privately through their GitHub profile.
+Please report vulnerabilities privately through GitHub: open the repository's **Security** tab and choose **Report a vulnerability** ([direct link](https://github.com/AlperenGonuk/job-application-system/security/advisories/new)). Do not open a public issue for security problems, and do not attach screenshots, CVs, or keys containing sensitive information.
 
 ---
 
@@ -42,4 +42,4 @@ Bu araç yerel kullanıma yöneliktir. Otomatik başvuru, e-posta okuma veya hes
 
 ### Güvenlik bildirimi
 
-Hassas bilgi içeren ekran görüntüsü, CV veya anahtarları herkese açık issue alanına koymayın. Özel bildirim kanalı yapılandırılana kadar depo sahibiyle GitHub profili üzerinden özel olarak iletişime geçin.
+Güvenlik açıklarını GitHub üzerinden özel olarak bildirin: deponun **Security** sekmesini açıp **Report a vulnerability** seçeneğini kullanın ([doğrudan bağlantı](https://github.com/AlperenGonuk/job-application-system/security/advisories/new)). Güvenlik sorunları için herkese açık issue açmayın; hassas bilgi içeren ekran görüntüsü, CV veya anahtar eklemeyin.
