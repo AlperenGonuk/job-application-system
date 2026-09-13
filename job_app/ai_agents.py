@@ -295,10 +295,13 @@ def build_command(agent: str, prompt: str, *, task: str, settings: dict) -> tupl
         template = custom_command(settings)
         if not template:
             raise ValueError("Özel ajan komutu tanımlı değil.")
-        parts = shlex.split(template, posix=False)
-        # posix=False tırnakları korur; boşluklu program yolu için yalnız
-        # program adındaki tırnaklar atılır.
-        parts[0] = resolve_executable(parts[0].strip('"'))
+        # Windows'ta posix=False ters eğik çizgili yolları bozmaz ama tırnakları
+        # korur; boşluklu program yolu için yalnız program adındaki tırnaklar
+        # atılır. Linux/macOS'ta kullanıcılar tek tırnak da yazar, bu yüzden
+        # orada kabuk kurallarıyla (posix=True) ayrıştırılır.
+        windows = os.name == "nt"
+        parts = shlex.split(template, posix=not windows)
+        parts[0] = resolve_executable(parts[0].strip('"') if windows else parts[0])
         if any("{prompt}" in part for part in parts):
             return safe_command([part.replace("{prompt}", prompt) for part in parts]), None
         return safe_command(parts), prompt

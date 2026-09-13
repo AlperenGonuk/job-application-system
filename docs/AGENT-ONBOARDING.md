@@ -163,7 +163,36 @@ If you can write files, you may also merge the job targets from section 3 into `
 
 ## 7. Recommend an agent and a model for each task
 
-Before you finish, ask the user **which command-line AI agent they have installed**, and then tell them which model to put in each of the app's two model fields (Settings → AI agent). The app runs two different kinds of work and they deserve different models:
+Before you finish, ask the user **which command-line AI agent they have installed**, and then tell them which model to put in each of the app's two model fields (Settings → AI agent).
+
+### 7a. Hermes users — find the provider first
+
+The app calls Hermes with `--provider anthropic` and Claude model names unless `data/settings.json` says otherwise, and **the Settings window has no provider field**. A Hermes set up for Gemini, OpenRouter or anything else will fail on the first review unless you fill this in. So when the user runs Hermes:
+
+1. **Find out which provider their Hermes uses.** If you can run commands, run `hermes status` and read the `Provider:` and `Model:` lines, or read `model.provider` in Hermes' `config.yaml`. Otherwise ask the user to run `hermes status` and paste those two lines. Note that `hermes status` shows a display name (e.g. "Google AI Studio"); the value the app needs is the provider id from `config.yaml` (e.g. `gemini`).
+2. **Suggest a provider and models, then ask the user to confirm.** Common Hermes provider ids and sensible model pairs:
+
+   | Hermes provider id | `ai_model_fast` (initial review) | `ai_model_deep` (detailed review) |
+   |---|---|---|
+   | `anthropic` | `claude-haiku-4-5-20251001` | `claude-sonnet-4-6` |
+   | `gemini` | `gemini-3.1-flash-lite-preview` | `gemini-3.1-pro-preview` |
+   | `openrouter` | `anthropic/claude-haiku-4.5` | `anthropic/claude-sonnet-5` |
+
+   For any other provider, do not guess names: tell the user to pick one cheap and one strong model from `hermes model`, and write those.
+3. **Always set the provider and both models together.** Setting only `ai_provider` sends the default Claude model names to a non-Anthropic provider, which fails. If the user keeps Anthropic, leave all three fields empty.
+4. **Write them, or tell the user to.** If you can write files, merge these keys into `data/settings.json` exactly like section 6 (read first, change only these keys):
+
+   ```json
+   {
+     "ai_agent": "hermes",
+     "ai_provider": "gemini",
+     "ai_model_fast": "gemini-3.1-flash-lite-preview",
+     "ai_model_deep": "gemini-3.1-pro-preview"
+   }
+   ```
+
+   If you cannot write files, print this block and tell the user to add it to `data/settings.json` while the app is closed, then press **Test selected agent**.
+5. **Check the provider actually works.** An invalid or missing API key for that provider shows up as an error from **Test selected agent** — tell the user to fix the key in Hermes (`hermes setup`), not in this app. The app runs two different kinds of work and they deserve different models:
 
 - **Initial review (`fast`)** — many short job cards in one call, a simple three-way label. A cheap, fast model is the right choice; a large model here just burns quota.
 - **Detailed review and CV comparison (`deep`)** — one long job description weighed against the person's evidence, with a written justification. This is where a strong reasoning model pays off.

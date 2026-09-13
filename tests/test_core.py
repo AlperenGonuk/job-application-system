@@ -344,6 +344,7 @@ class AgentTransportTest(unittest.TestCase):
         "Son satır"
     )
 
+    @unittest.skipUnless(os.name == "nt", "Windows .cmd davranışı")
     def test_old_style_shim_to_native_exe_is_resolved(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -359,6 +360,21 @@ class AgentTransportTest(unittest.TestCase):
             shim = Path(directory) / "agent.cmd"
             shim.write_text("@echo off\r\necho ARGS: %*\r\n", encoding="ascii")
             self.assertIsNone(ai_agents.resolve_batch_shim(shim))
+
+    @unittest.skipIf(os.name == "nt", "POSIX kabuk tırnak kuralları")
+    def test_custom_command_accepts_single_quoted_path_on_posix(self):
+        with tempfile.TemporaryDirectory(prefix="agent dir ") as directory:
+            program = Path(directory) / "my agent"
+            settings = {"ai_agent": "custom", "ai_custom_command": f"'{program}' run {{prompt}}"}
+            command, stdin_text = ai_agents.build_command("custom", "iki kelime", task="fast", settings=settings)
+            self.assertEqual(command, [str(program), "run", "iki kelime"])
+            self.assertIsNone(stdin_text)
+
+    @unittest.skipUnless(os.name == "nt", "Windows komut satırı ayrıştırması")
+    def test_custom_command_keeps_backslashes_in_quoted_windows_path(self):
+        settings = {"ai_agent": "custom", "ai_custom_command": r'"C:\Agent Tools\agent.exe" exec {prompt}'}
+        command, _ = ai_agents.build_command("custom", "iki kelime", task="fast", settings=settings)
+        self.assertEqual(command, [r"C:\Agent Tools\agent.exe", "exec", "iki kelime"])
 
     @unittest.skipUnless(os.name == "nt", "Windows .cmd davranışı")
     @unittest.skipUnless(shutil.which("node"), "node gerekli")

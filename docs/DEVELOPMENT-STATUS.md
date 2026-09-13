@@ -125,6 +125,15 @@ Başlangıç yönergesi, kullanıcının kariyer notlarının kopyasıyla Hermes
 - **Hermes sağlayıcı tuzağı:** Hermes'in kendi varsayılanı Gemini'ydi (anahtar geçersiz) ve yönerge doğrudan `hermes` ile verilince hemen düştü. Uygulama her çağrıda `--provider anthropic` gönderdiği için uygulama içinden sorun yok; ancak Anthropic dışı sağlayıcı kullanan Hermes kullanıcısı `data/settings.json` içinde `ai_provider` ayarlamalı. Arayüzde bu alan yok (README'de belgelendi).
 - **Konsol kodlaması:** `cv_document.py` ve `cv_for_job.py` stdout'u UTF-8'e çevirmiyordu; arayüz çıktıyı UTF-8 okuduğu için Türkçe karakterli klasörde "CV oluşturuldu" mesajındaki yol bozuk görünüyordu. Diğer modüllerle aynı `reconfigure` bloğu eklendi.
 
+## Linux/macOS denetimi (14 Eylül 2026)
+
+WSL Ubuntu 24.04 üzerinde, çalışma ağacının temiz bir kopyasıyla denendi. Stok Ubuntu'da `python3-venv` ve `python3-tk` yoktu ve `sudo` şifre istediği için Tkinter'li taşınabilir Python (uv, yalnız test klasörüne) kullanıldı.
+
+- **Eski `setup.sh` iki sorun çıkarıyordu:** `venv` eksikken yarım bir `.venv` bırakıyordu ve yeniden çalıştırıldığında bunu onarmıyordu (`pip` yok); Tkinter eksikliğini hiç söylemiyor, uygulama açılışta `ModuleNotFoundError: tkinter` ile çöküyordu. Yeni betik Python ≥ 3.11, `venv/ensurepip` ve `tkinter` kontrol ediyor, eksikte apt/dnf/pacman/Homebrew komutunu yazıyor, pip'siz `.venv`'yi yeniden kuruyor; `PYTHON=` ile başka yorumlayıcı seçilebiliyor.
+- **Özel komut ayrıştırma:** `shlex.split(posix=False)` Linux/macOS'ta tek tırnaklı yolu bozuyordu (`FileNotFoundError`). Windows dışında artık `posix=True`; Windows davranışı aynı. İki platform için test eklendi.
+- Linux'ta testler, `migrate`, `start.sh` ve masaüstü arayüzü (WSLg, 1180×720) çalıştı. Windows'a özel `.cmd` kısayol testinde eksik olan platform koşulu eklendi.
+- **macOS gerçek cihazda denenmedi.** Statik denetim: arayüzde platforma özel Tk çağrısı yok, DOCX `open` ile açılıyor, konsol gizleme Windows dışında devre dışı.
+
 ## Devam ederken çalıştırılacaklar
 
 ```bash
