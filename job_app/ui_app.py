@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -12,19 +14,22 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 from tkinter import scrolledtext
 
-from cv_ats import get_or_compute
-from ilan_tekrar_ayikla import fingerprint
-from ayarlar import load_settings, save_settings
-from depolama import data_dir, data_file, load_json, write_json
-from ilan_haiku_on_ele import is_hermes_available
-from ilan_sonnet_esle import is_locked as is_detailed_locked
+from job_app import ai_agents
+from job_app.ai_runner import run_agent
+from job_app.ats_score import get_or_compute
+from job_app.dedupe import fingerprint
+from job_app.process import hidden_process_options
+from job_app.review_detailed import is_locked as is_detailed_locked
+from job_app.review_initial import is_agent_available
+from job_app.settings import load_settings, save_settings
+from job_app.storage import ROOT, data_dir, data_file, load_json, resource_file, write_json
 
-ROOT = Path(__file__).resolve().parent
-HISTORY_DIR = data_dir("tarama-gecmisi")
-HAIKU_STATE = data_file("ilan-on-eleme-durumu.json")
-MATCH_STATE = data_file("ilan-esleme-durumu.json")
-DECISIONS_FILE = data_file("arayuz-cv-secimleri.json")
-ATS_SCORES_FILE = data_file("cv-ats-puanlari.json")
+ONBOARDING_FILE = resource_file("docs", "AGENT-ONBOARDING.md")
+HISTORY_DIR = data_dir("scan-history")
+INITIAL_STATE = data_file("initial-review-state.json")
+MATCH_STATE = data_file("detailed-review-state.json")
+DECISIONS_FILE = data_file("cv-selections.json")
+ATS_SCORES_FILE = data_file("ats-scores.json")
 
 TEXT = {
     "TR": {
@@ -51,8 +56,15 @@ TEXT = {
         "local_ats": "Yerel ATS tahmini", "ats_wait": "Yerel ATS tahmini: hesaplanıyor (model/token kullanılmaz)…", "ats_none": "Yerel ATS tahmini: henüz hesaplanmadı.",
         "settings": "Ayarlar", "initial_limit": "Her çalıştırmada ön eleme ilan sayısı:", "default_mode": "Varsayılan detaylı eleme modu:", "roles": "Hedef roller:", "sectors": "Hedef sektörler:", "countries": "Hedef ülkeler:", "cities": "Hedef şehirler:", "seniority": "Tercih edilen kıdem:", "search": "Yazarak ara ve listeden seç:", "other": "Ek özel seçenekler (virgülle ayır):", "work_type": "Tercih edilen çalışma biçimi:", "office": "Ofis", "hybrid": "Hibrit", "remote": "Uzaktan", "save": "Kaydet", "settings_saved": "Ayarlar bu cihazda yerel olarak kaydedildi.",
         "ai_tooltip": "Bu işlem yapay zekâ kullanır. Bağlı model hesabının kotası ve kullanımı etkilenebilir.",
-        "hermes_missing": "Hermes CLI bulunamadı",
-        "hermes_missing_text": "Yapay zeka işlemlerini çalıştırabilmek için sisteminizde 'hermes' CLI aracının kurulu ve PATH'te tanımlı olması gerekir.\n\nYapay zeka olmadan ilan toplama, filtreleme, yerel ATS puanı ve CV yönetimini kullanmaya devam edebilirsiniz.",
+        "ai_missing": "Yapay zeka ajanı bulunamadı",
+        "ai_missing_text": "Yapay zeka işlemleri için desteklenen bir ajan (Hermes, Claude Code, Codex, Antigravity, Gemini, Pi, Cursor) kurulu ve PATH'te olmalı ya da Ayarlar > Yapay zeka bölümünden kendi komutunuzu tanımlamalısınız.\n\nYapay zeka olmadan ilan toplama, filtreleme, yerel ATS puanı ve CV yönetimini kullanmaya devam edebilirsiniz.",
+        "ai_section": "Yapay zeka ajanı", "ai_agent_label": "Kullanılacak ajan:", "ai_auto": "Otomatik (kurulu ilk ajan)", "ai_custom": "Özel komut",
+        "ai_custom_label": "Özel komut ({prompt} yer tutucusuyla):", "ai_model_fast_label": "Ön eleme modeli:", "ai_model_deep_label": "Detaylı eleme / CV modeli:",
+        "ai_model_hint": "Boş bırakırsan ajanın kendi varsayılan modeli kullanılır.",
+        "ai_recommended": "Önerilen — ön eleme: {fast} · detaylı eleme: {deep}",
+        "ai_recommended_generic": "Bu ajan için doğrulanmış model adı listemizde yok. Kural: ön eleme için hızlı/ucuz, detaylı eleme için güçlü bir model seç.",
+        "ai_list_models": "Ajanın model listesi: {command}", "ai_apply_recommended": "Önerilen modelleri uygula", "ai_detected": "PATH'te bulunan ajanlar: {agents}", "ai_none_detected": "PATH'te desteklenen ajan bulunamadı.",
+        "ai_not_installed": "(kurulu değil)", "ai_test": "Seçili ajanı test et", "ai_test_running": "Test ediliyor…", "ai_test_ok": "Ajan yanıt verdi: {answer}", "ai_test_fail": "Ajan test edilemedi:\n{error}",
         "ai_busy": "Yapay zeka işlemi devam ediyor", "ai_busy_text": "Başka bir yapay zeka işlemi zaten çalışıyor. Lütfen mevcut işlem bitene kadar bekleyin.",
         "help": "Nasıl kullanılır?", "preferences": "İş tercihleri", "confirm_selection": "Seçimi onayla", "confirm_hint": "Seçtiklerini onayladığında hemen kaydedilir. Sektör onayı rol, ülke onayı şehir önerilerini yeniler.", "selection_saved": "Kaydedildi", "selection_save_error": "Seçim kaydedilemedi.", "use_without_ai": "Yapay zeka olmadan kullan", "copy_skill": "Yapay zeka başlangıç yönergesini kopyala", "copy_skill_path": "Yönerge dosyası yolunu kopyala", "skill_copied": "Yönerge panoya kopyalandı. Tercih ettiğin yapay zeka modeline gönderip soruları yanıtlayabilirsin.", "path_copied": "Yerel yönerge dosyası yolu panoya kopyalandı.", "copy_skill_tip": "Bu metni bir yapay zekaya verirsen sana gerekli soruları sırayla sorar ve yerel profil dosyalarını hazırlamana yardım eder.", "copy_path_tip": "Bu yol yalnız bilgisayarındaki dosyalara erişebilen yerel yapay zekalar içindir. Modelden başlamadan önce dosyayı okumasını iste.",
     },
@@ -80,15 +92,23 @@ TEXT = {
         "local_ats": "Local ATS estimate", "ats_wait": "Local ATS estimate: calculating (no model/tokens used)…", "ats_none": "Local ATS estimate: not calculated yet.",
         "settings": "Settings", "initial_limit": "Jobs per initial-review run:", "default_mode": "Default detailed-review mode:", "roles": "Target roles:", "sectors": "Target sectors:", "countries": "Target countries:", "cities": "Target cities:", "seniority": "Preferred seniority:", "search": "Type to search and select from the list:", "other": "Other custom options (comma-separated):", "work_type": "Preferred work arrangements:", "office": "On-site", "hybrid": "Hybrid", "remote": "Remote", "save": "Save", "settings_saved": "Settings were saved locally on this device.",
         "ai_tooltip": "This action uses AI. It may affect usage and limits on the connected model account.",
-        "hermes_missing": "Hermes CLI not found",
-        "hermes_missing_text": "To run AI evaluation features, the 'hermes' CLI tool must be installed and available in your PATH.\n\nYou can still use job collection, filtering, local ATS scoring, and CV tracking without AI.",
+        "ai_missing": "No AI agent found",
+        "ai_missing_text": "AI features need a supported agent (Hermes, Claude Code, Codex, Antigravity, Gemini, Pi, Cursor) installed and on your PATH, or a custom command defined in Settings > AI agent.\n\nYou can still use job collection, filtering, local ATS scoring, and CV tracking without AI.",
+        "ai_section": "AI agent", "ai_agent_label": "Agent to use:", "ai_auto": "Automatic (first installed agent)", "ai_custom": "Custom command",
+        "ai_custom_label": "Custom command (use the {prompt} placeholder):", "ai_model_fast_label": "Initial-review model:", "ai_model_deep_label": "Detailed-review / CV model:",
+        "ai_model_hint": "Leave empty to use the agent's own default model.",
+        "ai_recommended": "Recommended — initial review: {fast} · detailed review: {deep}",
+        "ai_recommended_generic": "No verified model name is listed for this agent. Rule of thumb: a fast, cheap model for initial review and a strong one for detailed review.",
+        "ai_list_models": "List this agent's models: {command}", "ai_apply_recommended": "Apply recommended models", "ai_detected": "Agents found on PATH: {agents}", "ai_none_detected": "No supported agent found on PATH.",
+        "ai_not_installed": "(not installed)", "ai_test": "Test selected agent", "ai_test_running": "Testing…", "ai_test_ok": "The agent replied: {answer}", "ai_test_fail": "The agent could not be tested:\n{error}",
         "ai_busy": "AI operation in progress", "ai_busy_text": "Another AI operation is already running. Please wait until it finishes.",
         "help": "How to use", "preferences": "Job preferences", "confirm_selection": "Confirm selection", "confirm_hint": "Confirming saves this selection immediately. Sector confirmation refreshes role suggestions; country confirmation refreshes city suggestions.", "selection_saved": "Saved", "selection_save_error": "The selection could not be saved.", "use_without_ai": "Continue without AI", "copy_skill": "Copy AI onboarding instruction", "copy_skill_path": "Copy instruction file path", "skill_copied": "The instruction was copied. Send it to your preferred AI model and answer its questions.", "path_copied": "The local instruction-file path was copied.", "copy_skill_tip": "Give this text to an AI and it will ask for the required details in order and help prepare local profile files.", "copy_path_tip": "This path is for local AIs that can read files on your computer. Ask the model to read it before starting.",
     },
 }
-STATUS = {"candidate": "aday", "manual": "belirsiz", "outside": "kapsam_dışı"}
-DECISIONS = {"apply": "başvur", "manual": "manuel_incele", "do_not_apply": "başvurma"}
-MODE_CODES = {"strict": "kati", "flexible": "esnek", "very_flexible": "cok_esnek"}
+STATUS = {"candidate": "candidate", "manual": "unclear", "outside": "out_of_scope"}
+DECISIONS = {"apply": "apply", "manual": "review_manually", "do_not_apply": "skip"}
+MODE_CODES = {"strict": "strict", "flexible": "flexible", "very_flexible": "very_flexible"}
+AI_TASKS = ("initial-review", "detailed-review", "cv-match")
 PREFERENCE_OPTIONS = {
     "target_roles": [
         "Software Engineering Intern", "Data Analyst Intern", "Data Science / Machine Learning Intern", "QA / Test Intern",
@@ -206,9 +226,36 @@ def cities_for_countries(countries: set[str]) -> list[str]:
 
 
 def cv_options(language: str) -> tuple[str, ...]:
-    directory = data_dir("CV-Sürümleri")
+    directory = data_dir("cv-versions")
     names = sorted(path.stem for path in directory.glob(f"CV-{language}-*.docx")) if directory.exists() else []
     return ("", *names)
+
+
+def task_command(task: str, *args: str) -> list[str]:
+    """Alt görevi ayrı süreçte çalıştıracak komutu üretir.
+
+    Tek dosya .exe olarak paketlendiğinde uygulama kendi kendini görev adıyla
+    yeniden çağırır; kaynaktan çalışırken main.py devreye girer.
+    """
+    if getattr(sys, "frozen", False):
+        return [sys.executable, task, *args]
+    return [sys.executable, str(ROOT / "main.py"), task, *args]
+
+
+def open_document(path: Path) -> None:
+    """Belgeyi LibreOffice ile, yoksa işletim sisteminin varsayılan uygulamasıyla açar."""
+    soffice = shutil.which("soffice") or shutil.which("libreoffice")
+    windows_default = Path(r"C:\Program Files\LibreOffice\program\soffice.exe")
+    if not soffice and windows_default.exists():
+        soffice = str(windows_default)
+    if soffice:
+        subprocess.Popen([soffice, "--view", str(path)], **hidden_process_options())
+    elif sys.platform.startswith("win"):
+        os.startfile(path)
+    elif sys.platform == "darwin":
+        subprocess.Popen(["open", str(path)])
+    else:
+        subprocess.Popen(["xdg-open", str(path)])
 
 
 class Tooltip:
@@ -326,7 +373,7 @@ class Application(tk.Tk):
 
     def open_settings(self):
         current = load_settings()
-        dialog = tk.Toplevel(self); dialog.title(self.t("settings")); dialog.transient(self); dialog.grab_set(); dialog.geometry("720x720"); dialog.minsize(620, 560)
+        dialog = tk.Toplevel(self); dialog.title(self.t("settings")); dialog.transient(self); dialog.grab_set(); dialog.geometry("760x820"); dialog.minsize(640, 600)
         frame = tk.Frame(dialog, padx=22, pady=18); frame.pack(fill="both", expand=True)
         general = tk.LabelFrame(frame, text=self.t("settings"), padx=14, pady=12)
         general.pack(fill="x")
@@ -339,15 +386,100 @@ class Application(tk.Tk):
         choices = [self.t(key) for key in MODE_CODES]
         box = ttk.Combobox(general, values=choices, state="readonly", width=18); box.set(self.t(mode_key)); box.grid(row=1, column=1, padx=(14, 0), pady=(12, 0), sticky="w")
         box.bind("<<ComboboxSelected>>", lambda event: mode.set(next(key for key in MODE_CODES if self.t(key) == event.widget.get())))
-        arrangements = set(current.get("work_arrangements", ["ofis", "hibrit", "uzaktan"]))
-        office = tk.BooleanVar(value="ofis" in arrangements)
-        hybrid = tk.BooleanVar(value="hibrit" in arrangements)
-        remote = tk.BooleanVar(value="uzaktan" in arrangements)
+        arrangements = set(current.get("work_arrangements", ["onsite", "hybrid", "remote"]))
+        office = tk.BooleanVar(value="onsite" in arrangements)
+        hybrid = tk.BooleanVar(value="hybrid" in arrangements)
+        remote = tk.BooleanVar(value="remote" in arrangements)
         tk.Label(general, text=self.t("work_type"), font=("Segoe UI", 10, "bold")).grid(row=2, column=0, pady=(12, 0), sticky="w")
         work_frame = tk.Frame(general); work_frame.grid(row=2, column=1, padx=(14, 0), pady=(12, 0), sticky="w")
         ttk.Checkbutton(work_frame, text=self.t("office"), variable=office).pack(side="left")
         ttk.Checkbutton(work_frame, text=self.t("hybrid"), variable=hybrid).pack(side="left", padx=(10, 0))
         ttk.Checkbutton(work_frame, text=self.t("remote"), variable=remote).pack(side="left", padx=(10, 0))
+
+        ai_frame = tk.LabelFrame(frame, text=self.t("ai_section"), padx=14, pady=12)
+        ai_frame.pack(fill="x", pady=(12, 0))
+        detected = ai_agents.available_agents()
+        detected_text = self.t("ai_detected").format(agents=", ".join(ai_agents.agent_label(name) for name in detected)) if detected else self.t("ai_none_detected")
+        tk.Label(ai_frame, text=detected_text, fg="#4a6072", wraplength=640, justify="left").grid(row=0, column=0, columnspan=2, sticky="w")
+        agent_keys = [ai_agents.AUTO_AGENT, *ai_agents.DETECTION_ORDER, ai_agents.CUSTOM_AGENT]
+
+        def agent_display(name):
+            if name == ai_agents.AUTO_AGENT:
+                return self.t("ai_auto")
+            if name == ai_agents.CUSTOM_AGENT:
+                return self.t("ai_custom")
+            return ai_agents.agent_label(name) + ("" if ai_agents.is_installed(name) else " " + self.t("ai_not_installed"))
+
+        stored_agent = current.get("ai_agent", ai_agents.AUTO_AGENT)
+        agent_choice = tk.StringVar(value=stored_agent if stored_agent in agent_keys else ai_agents.AUTO_AGENT)
+        tk.Label(ai_frame, text=self.t("ai_agent_label"), font=("Segoe UI", 10, "bold")).grid(row=1, column=0, pady=(10, 0), sticky="w")
+        agent_box = ttk.Combobox(ai_frame, values=[agent_display(name) for name in agent_keys], state="readonly", width=34)
+        agent_box.set(agent_display(agent_choice.get()))
+        agent_box.grid(row=1, column=1, padx=(14, 0), pady=(10, 0), sticky="w")
+        agent_box.bind("<<ComboboxSelected>>", lambda event: (agent_choice.set(next(name for name in agent_keys if agent_display(name) == event.widget.get())), refresh_model_hint()))
+        tk.Label(ai_frame, text=self.t("ai_custom_label")).grid(row=2, column=0, pady=(10, 0), sticky="w")
+        custom_command = tk.StringVar(value=current.get("ai_custom_command", ""))
+        ttk.Entry(ai_frame, textvariable=custom_command, width=40).grid(row=2, column=1, padx=(14, 0), pady=(10, 0), sticky="w")
+        tk.Label(ai_frame, text=self.t("ai_model_fast_label")).grid(row=3, column=0, pady=(8, 0), sticky="w")
+        model_fast = tk.StringVar(value=current.get("ai_model_fast", ""))
+        ttk.Entry(ai_frame, textvariable=model_fast, width=40).grid(row=3, column=1, padx=(14, 0), pady=(8, 0), sticky="w")
+        tk.Label(ai_frame, text=self.t("ai_model_deep_label")).grid(row=4, column=0, pady=(8, 0), sticky="w")
+        model_deep = tk.StringVar(value=current.get("ai_model_deep", ""))
+        ttk.Entry(ai_frame, textvariable=model_deep, width=40).grid(row=4, column=1, padx=(14, 0), pady=(8, 0), sticky="w")
+        model_hint = tk.StringVar()
+
+        def suggested_models() -> dict:
+            """Seçili ajan için önerilen modeller; otomatik seçimde tespit edilen ajana bakar."""
+            agent = agent_choice.get()
+            if agent == ai_agents.AUTO_AGENT:
+                agent = ai_agents.resolve_agent({"ai_agent": ai_agents.AUTO_AGENT}) or agent
+            return ai_agents.recommended_models(agent), ai_agents.list_models_command(agent)
+
+        def refresh_model_hint(*_args):
+            models, command = suggested_models()
+            lines = [self.t("ai_model_hint")]
+            if models:
+                lines.append(self.t("ai_recommended").format(fast=models.get("fast", "-"), deep=models.get("deep", "-")))
+            else:
+                lines.append(self.t("ai_recommended_generic"))
+            if command:
+                lines.append(self.t("ai_list_models").format(command=command))
+            model_hint.set("\n".join(lines))
+
+        def apply_recommended():
+            models, _command = suggested_models()
+            if not models:
+                return
+            model_fast.set(models.get("fast", ""))
+            model_deep.set(models.get("deep", ""))
+
+        tk.Label(ai_frame, textvariable=model_hint, fg="#4a6072", wraplength=640, justify="left").grid(row=5, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        refresh_model_hint()
+        test_status = tk.StringVar()
+
+        def ai_settings() -> dict:
+            return {"ai_agent": agent_choice.get(), "ai_custom_command": custom_command.get().strip(),
+                    "ai_model_fast": model_fast.get().strip(), "ai_model_deep": model_deep.get().strip()}
+
+        def test_agent():
+            test_status.set(self.t("ai_test_running"))
+            probe = {**load_settings(), **ai_settings()}
+
+            def run():
+                try:
+                    answer = run_agent('Yalnız şu JSON ile yanıt ver: {"ok": true}', task="fast", settings=probe, timeout=90)
+                    message = self.t("ai_test_ok").format(answer=answer.strip()[:200])
+                except Exception as error:
+                    message = self.t("ai_test_fail").format(error=str(error)[:400])
+                self.after(0, lambda: (test_status.set(""), messagebox.showinfo(self.t("ai_section"), message, parent=dialog)))
+
+            threading.Thread(target=run, daemon=True).start()
+
+        test_row = tk.Frame(ai_frame)
+        test_row.grid(row=6, column=0, columnspan=2, sticky="w", pady=(10, 0))
+        ttk.Button(test_row, text=self.t("ai_apply_recommended"), command=apply_recommended).pack(side="left")
+        ttk.Button(test_row, text=self.t("ai_test"), command=test_agent).pack(side="left", padx=(8, 0))
+        tk.Label(test_row, textvariable=test_status, fg="#b26a00").pack(side="left", padx=(10, 0))
 
         preferences = ttk.Notebook(frame)
         preferences.pack(fill="both", expand=True, pady=(14, 0))
@@ -463,63 +595,86 @@ class Application(tk.Tk):
         def save():
             try:
                 chosen = {key: selected_with_custom(key) for key in selected_values}
-                work = [name for name, selected in (("ofis", office.get()), ("hibrit", hybrid.get()), ("uzaktan", remote.get())) if selected]
-                save_settings({"initial_review_limit": count.get(), "detailed_review_mode": MODE_CODES[mode.get()], **chosen, "work_arrangements": work, "remote_ok": "uzaktan" in work or "hibrit" in work})
+                work = [name for name, selected in (("onsite", office.get()), ("hybrid", hybrid.get()), ("remote", remote.get())) if selected]
+                save_settings({"initial_review_limit": count.get(), "detailed_review_mode": MODE_CODES[mode.get()], **chosen, **ai_settings(), "work_arrangements": work, "remote_ok": "remote" in work or "hybrid" in work})
             except (tk.TclError, ValueError):
                 return
             dialog.destroy(); messagebox.showinfo(self.t("settings"), self.t("settings_saved"))
         ttk.Button(frame, text=self.t("save"), command=save).pack(anchor="e", pady=(14, 0))
 
     def help_text(self) -> str:
-        skill_path = ROOT / "AI-ONBOARDING-SKILL.md"
         if self.app_language.get() == "EN":
             return f"""Using the system without AI
 
 1. Install Python 3.11+, then run: pip install -r requirements.txt
-2. Create a data folder, then copy ilan-kaynaklari.ornek.json as data/ilan-kaynaklari.json and adjust your search.
-3. Start the application. Collect jobs, filter them, and record the CV you used.
+2. Start the application (start.bat on Windows, ./scripts/start.sh elsewhere).
+3. Open Settings, save your target roles, sectors, countries and cities.
+4. Press "Collect new jobs", filter the results, and record the CV you used.
 
-The collector, duplicate check, filters, and local records work without AI or a CLI. LibreOffice is only needed to open generated DOCX files.
+Job collection, duplicate removal, filters, local ATS estimation and CV tracking
+all work without any AI or CLI. LibreOffice is optional, for opening DOCX files.
 
 For users who want to use AI
 
-Initial review, detailed review, and current-CV comparison use AI and can consume the connected model account's quota. This version includes the Hermes CLI adapter for automated AI actions.
-
-For another model, use the model-neutral onboarding instruction below and configure a compatible local CLI adapter before enabling automated AI actions. A browser/chat-only model can still be used manually: copy the instruction, answer its questions, then place the resulting private JSON files beside this app.
+Initial review, detailed review and current-CV comparison use an AI agent and can
+consume the connected account's quota. Any of these command-line agents works:
+Hermes, Claude Code, Codex CLI, Antigravity (agy), Gemini CLI, Pi, Cursor Agent.
+The app detects what is installed on your PATH; you can pick one under
+Settings > AI agent, or define your own command with a {{prompt}} placeholder.
 
 First personal setup
 
-Before detailed evaluation, give your preferred AI the onboarding instruction. It asks for target roles, locations, education, real experience/projects, skills, languages and existing CV links. Save its verified outputs as data/profil.json and data/aday-kanitlari.json. These files remain local and are ignored by Git.
+Before detailed evaluation, give your preferred AI the onboarding instruction
+below. It interviews you about target roles, education, real experience and
+projects; if you hand it your existing CV it reads that first and only asks for
+what is missing. It is told never to invent experience, but models can still
+overstate: read both files once and correct anything that is not true. Save
+the output as data/profile.json and data/candidate-evidence.json. Both stay
+local and are ignored by Git.
 
-Using a local AI
+Using an agent that can read files
 
-If you have an AI running locally, you can copy and send this file path to it. Ask the model to read the file before it starts: {skill_path}
+If your agent can open local files, copy this path and ask it to read the file
+before starting: {ONBOARDING_FILE}
 
-If your local AI cannot access files directly, use “Copy AI onboarding instruction” below and paste the copied text into the model.
+If it cannot read files, use "Copy AI onboarding instruction" below and paste the
+copied text straight into the model — a browser chat works too.
 """
         return f"""Yapay zeka olmadan sistemi kullanmak
 
 1. Python 3.11+ kur, sonra: pip install -r requirements.txt
-2. data klasörünü oluştur; ilan-kaynaklari.ornek.json dosyasını data/ilan-kaynaklari.json adıyla kopyala ve aramanı düzenle.
-3. Uygulamayı aç. İlanları topla, filtrele ve kullandığın CV'yi kaydet.
+2. Uygulamayı başlat (Windows'ta start.bat, diğer sistemlerde ./scripts/start.sh).
+3. Ayarlar'ı aç; hedef rollerini, sektörlerini, ülke ve şehirlerini kaydet.
+4. "Yeni ilanları topla" düğmesine bas, sonuçları filtrele ve kullandığın CV'yi kaydet.
 
-İlan toplama, tekrar ayıklama, filtreler ve yerel kayıtlar yapay zeka veya CLI olmadan çalışır. Oluşturulan DOCX dosyalarını açmak için LibreOffice isteğe bağlıdır.
+İlan toplama, tekrar ayıklama, filtreler, yerel ATS tahmini ve CV kaydı yapay zeka
+veya CLI olmadan çalışır. LibreOffice yalnız DOCX dosyalarını açmak için gerekir.
 
 Yapay zeka kullanmak isteyenler için
 
-Ön eleme, detaylı eleme ve mevcut CV karşılaştırması yapay zeka kullanır; bağlı model hesabının kotasını tüketebilir. Bu sürüm otomatik yapay zeka işlemleri için Hermes CLI bağdaştırıcısını içerir.
-
-Bu sürüm Hermes CLI bağdaştırıcısını içerir. Başka bir model için aşağıdaki model-bağımsız başlangıç yönergesini kullan; otomatik yapay zeka düğmelerini açmadan önce uyumlu bir yerel CLI bağdaştırıcısı yapılandır. Sadece tarayıcı/sohbet modeli de manuel kullanılabilir: yönergeyi kopyala, soruları yanıtla, oluşan özel JSON dosyalarını uygulamanın yanına koy.
+Ön eleme, detaylı eleme ve mevcut CV karşılaştırması bir yapay zeka ajanı kullanır
+ve bağlı hesabın kotasını tüketebilir. Şu komut satırı ajanlarının herhangi biri
+yeterlidir: Hermes, Claude Code, Codex CLI, Antigravity (agy), Gemini CLI, Pi,
+Cursor Agent. Uygulama PATH'teki ajanları kendisi bulur; Ayarlar > Yapay zeka
+bölümünden birini seçebilir veya {{prompt}} yer tutuculu kendi komutunu yazabilirsin.
 
 İlk kişisel kurulum
 
-Detaylı elemeye başlamadan önce tercih ettiğin yapay zeka modeline başlangıç yönergesini ver. Model; hedef roller, konum, eğitim, gerçek deneyim/projeler, beceriler, dil seviyesi ve mevcut CV bağlantılarını sorar. Doğrulanmış çıktıları data/profil.json ve data/aday-kanitlari.json olarak kaydet. Bu dosyalar yerelde kalır ve Git'e eklenmez.
+Detaylı elemeye başlamadan önce tercih ettiğin yapay zekaya aşağıdaki başlangıç
+yönergesini ver. Yönerge sana hedef rollerini, eğitimini, gerçek deneyim ve
+projelerini sorar; mevcut CV'ni verirsen önce onu okur ve yalnız eksik kalanları
+sorar. Olmayan deneyimi uydurmaması açıkça istenir ama modeller yine de abartabilir:
+iki dosyayı bir kez okuyup doğru olmayan her şeyi düzelt. Çıktıyı data/profile.json
+ve data/candidate-evidence.json olarak kaydet. İki dosya da yerelde kalır ve Git'e
+eklenmez.
 
-Yerelde çalışan yapay zeka kullanıyorsan
+Dosya okuyabilen bir ajan kullanıyorsan
 
-Yerel yapay zekan varsa bu dosya yolunu kopyalayıp modele atabilirsin. Modelden başlamadan önce bu dosyayı okumasını iste: {skill_path}
+Ajanın yerel dosya açabiliyorsa bu yolu kopyalayıp ona ver ve başlamadan önce
+dosyayı okumasını iste: {ONBOARDING_FILE}
 
-Yerel yapay zeka dosya okuyamıyorsa aşağıdaki “Yapay zeka başlangıç yönergesini kopyala” düğmesine bas; kopyalanan metni doğrudan modele yapıştır.
+Dosya okuyamıyorsa aşağıdaki "Yapay zeka başlangıç yönergesini kopyala" düğmesine
+bas; kopyalanan metni doğrudan modele yapıştır — tarayıcıdaki sohbet de olur.
 """
 
     def show_first_run_help(self):
@@ -534,11 +689,11 @@ Yerel yapay zeka dosya okuyamıyorsa aşağıdaki “Yapay zeka başlangıç yö
         text = scrolledtext.ScrolledText(frame, width=74, height=22, wrap="word", font=("Segoe UI", 10))
         text.insert("1.0", self.help_text()); text.configure(state="disabled"); text.pack(fill="both", expand=True)
         def copy_skill():
-            skill = (ROOT / "AI-ONBOARDING-SKILL.md").read_text(encoding="utf-8")
+            skill = ONBOARDING_FILE.read_text(encoding="utf-8")
             self.clipboard_clear(); self.clipboard_append(skill); self.update()
             messagebox.showinfo(self.t("help"), self.t("skill_copied"), parent=dialog)
         def copy_skill_path():
-            self.clipboard_clear(); self.clipboard_append(str(ROOT / "AI-ONBOARDING-SKILL.md")); self.update()
+            self.clipboard_clear(); self.clipboard_append(str(ONBOARDING_FILE)); self.update()
             messagebox.showinfo(self.t("help"), self.t("path_copied"), parent=dialog)
         copy_text_button = ttk.Button(frame, text=self.t("copy_skill"), command=copy_skill)
         copy_text_button.pack(anchor="e", pady=(12, 0)); Tooltip(copy_text_button, lambda: self.t("copy_skill_tip"))
@@ -558,11 +713,11 @@ Yerel yapay zeka dosya okuyamıyorsa aşağıdaki “Yapay zeka başlangıç yö
 
     def load_jobs(self) -> list[dict]:
         jobs = {}
-        for file in sorted(HISTORY_DIR.glob("tarama-*.json")):
+        for file in sorted(HISTORY_DIR.glob("scan-*.json")):
             record = load_json(file, {}); scan_date = record.get("scan_date") or record.get("ran_at", "")[:10]
             for job in record.get("new_jobs", []): jobs.setdefault(fingerprint(job), {**job, "scan_date": scan_date, "key": fingerprint(job)})
-        state = load_json(HAIKU_STATE, {})
-        for key, job in jobs.items(): job["haiku"] = state.get(key, {})
+        state = load_json(INITIAL_STATE, {})
+        for key, job in jobs.items(): job["initial"] = state.get(key, {})
         return list(jobs.values())
 
     def reload_data(self) -> None:
@@ -577,7 +732,7 @@ Yerel yapay zeka dosya okuyamıyorsa aşağıdaki “Yapay zeka başlangıç yö
         if self.date_filter.get() == "custom": wanted = self.custom_date.get() if self.custom_date.get() != self.t("custom_date") else None
         self.tree.delete(*self.tree.get_children()); self.filtered = []
         for job in self.jobs:
-            h_code = job.get("haiku", {}).get("etiket", ""); d_code = self.matches.get(job["key"], {}).get("karar", "")
+            h_code = job.get("initial", {}).get("label", ""); d_code = self.matches.get(job["key"], {}).get("decision", "")
             if wanted and job["scan_date"] != wanted: continue
             sf = self.status_filter.get()
             if sf == "not_processed":
@@ -591,7 +746,7 @@ Yerel yapay zeka dosya okuyamıyorsa aşağıdaki “Yapay zeka başlangıç yö
                 if d_code != DECISIONS.get(df, ""): continue
             cv = self.decisions.get(job["key"], {}).get("cv") or self.t("not_selected")
             self.filtered.append(job); self.tree.insert("", "end", iid=job["key"], values=(job["scan_date"], job["company"], job["title"], job["location"], self.label_for_status(h_code), self.label_for_decision(d_code), cv))
-        reviewed, waiting = sum(job["key"] in self.matches for job in self.jobs), sum(not job.get("haiku") for job in self.jobs)
+        reviewed, waiting = sum(job["key"] in self.matches for job in self.jobs), sum(not job.get("initial") for job in self.jobs)
         self.summary.set(f"{len(self.jobs)} {'unique jobs' if self.app_language.get() == 'EN' else 'benzersiz ilan'} · {len(self.filtered)} {'shown' if self.app_language.get() == 'EN' else 'görünümde'} · {reviewed} {'reviewed in detail' if self.app_language.get() == 'EN' else 'detaylı incelendi'} · {waiting} {'awaiting initial review' if self.app_language.get() == 'EN' else 'ön eleme bekliyor'}")
         self.selected_key = None; self.detail_text.set(self.t("choose_job_text")); self.cv_language_changed()
 
@@ -609,11 +764,11 @@ Yerel yapay zeka dosya okuyamıyorsa aşağıdaki “Yapay zeka başlangıç yö
 
     def set_detail(self, job, calculating=False):
         match = self.matches.get(job["key"], {}); mode = next((self.t(key) for key, code in MODE_CODES.items() if code == match.get("mode")), self.t("strict"))
-        detail = self.t("not_reviewed") if not match else f"{self.label_for_decision(match.get('karar', ''))} ({mode}) · {match.get('uyum_puani', '?')}/100 · {match.get('cv_tipi', 'genel')}"
+        detail = self.t("not_reviewed") if not match else f"{self.label_for_decision(match.get('decision', ''))} ({mode}) · {match.get('match_score', '?')}/100 · {match.get('cv_focus', 'general')}"
         ats = self.ats_scores.get(job["key"])
-        ats_line = f"{self.t('local_ats')} ({ats.get('basis', 'job text')}): " + " · ".join(f"{row['cv']}: {row['puan']}/100" for row in ats.get("rows", [])) if ats else (self.t("ats_wait") if calculating else self.t("ats_none"))
-        self.detail_text.set(f"{job['company']} · {job['title']}\n{job['location']} · {self.t('date')}: {job['scan_date']} · {self.t('status')} {self.label_for_status(job.get('haiku', {}).get('etiket', ''))}\n{self.t('detail')} {detail}\n{ats_line}")
-        saved = self.decisions.get(job["key"], {}); self.cv_language.set(saved.get("language", match.get("cv_dili", "TR"))); self.cv_language_changed(); self.cv_choice.set(saved.get("cv", cv_options(self.cv_language.get())[0]))
+        ats_line = f"{self.t('local_ats')} ({ats.get('basis', 'job text')}): " + " · ".join(f"{row['cv']}: {row['score']}/100" for row in ats.get("rows", [])) if ats else (self.t("ats_wait") if calculating else self.t("ats_none"))
+        self.detail_text.set(f"{job['company']} · {job['title']}\n{job['location']} · {self.t('date')}: {job['scan_date']} · {self.t('status')} {self.label_for_status(job.get('initial', {}).get('label', ''))}\n{self.t('detail')} {detail}\n{ats_line}")
+        saved = self.decisions.get(job["key"], {}); self.cv_language.set(saved.get("language", match.get("cv_language", "TR"))); self.cv_language_changed(); self.cv_choice.set(saved.get("cv", cv_options(self.cv_language.get())[0]))
 
     def calculate_ats(self, job):
         def run():
@@ -641,29 +796,26 @@ Yerel yapay zeka dosya okuyamıyorsa aşağıdaki “Yapay zeka başlangıç yö
 
     def open_selected_cv(self):
         if not self.require_job(): return
-        saved = self.decisions.get(self.selected_key, {}); path = Path(saved["generated_file"]) if saved.get("generated_file") else data_dir("CV-Sürümleri") / f"{self.cv_choice.get()}.docx"
+        saved = self.decisions.get(self.selected_key, {}); path = Path(saved["generated_file"]) if saved.get("generated_file") else data_dir("cv-versions") / f"{self.cv_choice.get()}.docx"
         if not saved.get("generated_file") and not self.cv_choice.get(): messagebox.showinfo(self.t("choose_cv"), self.t("choose_cv_text")); return
         try:
-            path.resolve().relative_to(data_dir("CV-Sürümleri").resolve())
+            path.resolve().relative_to(data_dir("cv-versions").resolve())
         except ValueError:
-            messagebox.showerror(self.t("open_error"), "CV dosyası uygulamanın CV-Sürümleri klasörü dışında olamaz."); return
+            messagebox.showerror(self.t("open_error"), "CV dosyası uygulamanın data/cv-versions klasörü dışında olamaz."); return
         if not path.exists(): messagebox.showerror(self.t("cv_missing"), f"{self.t('cv_missing_text')}\n{path}"); return
-        soffice = Path(r"C:\Program Files\LibreOffice\program\soffice.exe")
         try:
-            if soffice.exists(): subprocess.Popen([str(soffice), "--view", str(path)])
-            else:
-                import os; os.startfile(path)
+            open_document(path)
         except OSError as error: messagebox.showerror(self.t("open_error"), str(error))
 
-    def run_script(self, script, title, *args):
-        is_ai_script = script in {"ilan_haiku_on_ele.py", "ilan_sonnet_esle.py", "cv_uyum_incele.py"}
-        if is_ai_script and self._ai_running:
+    def run_task(self, task, title, *args):
+        is_ai_task = task in AI_TASKS
+        if is_ai_task and self._ai_running:
             messagebox.showinfo(self.t("ai_busy"), self.t("ai_busy_text")); return
-        if is_ai_script:
+        if is_ai_task:
             self._ai_running = True
         def run():
-            result = subprocess.run([sys.executable, str(ROOT / script), *args], capture_output=True, text=True, encoding="utf-8", errors="replace")
-            self.after(0, lambda: self.after_script(result, title, script, is_ai_script))
+            result = subprocess.run(task_command(task, *args), capture_output=True, text=True, encoding="utf-8", errors="replace", **hidden_process_options())
+            self.after(0, lambda: self.after_task(result, title, task, is_ai_task))
         threading.Thread(target=run, daemon=True).start()
 
     def format_scan_result(self, stdout: str) -> str:
@@ -697,31 +849,31 @@ Yerel yapay zeka dosya okuyamıyorsa aşağıdaki “Yapay zeka başlangıç yö
             message += "\n\n" + self.t("scan_sources").format(sources=source_lines)
         return message
 
-    def after_script(self, result, title, script, was_ai=False):
+    def after_task(self, result, title, task, was_ai=False):
         if was_ai:
             self._ai_running = False
         self.reload_data()
         if result.returncode == 0:
-            message = self.format_scan_result(result.stdout) if script == "ilan_topla.py" else result.stdout.strip() or "Done."
+            message = self.format_scan_result(result.stdout) if task == "collect" else result.stdout.strip() or "Done."
             messagebox.showinfo(title, message)
         else:
-            messagebox.showerror(self.t("collect_error") if script == "ilan_topla.py" else title, result.stderr.strip() or "Operation failed.")
+            messagebox.showerror(self.t("collect_error") if task == "collect" else title, result.stderr.strip() or "Operation failed.")
 
     def collect_jobs(self):
-        if messagebox.askyesno(self.t("collect"), self.t("collect_confirm")): self.run_script("ilan_topla.py", self.t("collect_done"))
+        if messagebox.askyesno(self.t("collect"), self.t("collect_confirm")): self.run_task("collect", self.t("collect_done"))
 
-    def check_hermes(self) -> bool:
-        if not is_hermes_available():
-            messagebox.showwarning(self.t("hermes_missing"), self.t("hermes_missing_text"))
+    def check_ai_agent(self) -> bool:
+        if not is_agent_available():
+            messagebox.showwarning(self.t("ai_missing"), self.t("ai_missing_text"))
             return False
         return True
 
     def run_preselection(self):
-        if not self.check_hermes(): return
-        self.run_script("ilan_haiku_on_ele.py", self.t("preselect"))
+        if not self.check_ai_agent(): return
+        self.run_task("initial-review", self.t("preselect"))
 
     def run_detailed(self):
-        if not self.check_hermes(): return
+        if not self.check_ai_agent(): return
         if self._ai_running or is_detailed_locked():
             messagebox.showinfo(self.t("ai_busy"), self.t("ai_busy_text")); return
         dialog = tk.Toplevel(self); dialog.title(self.t("mode_title")); dialog.transient(self); dialog.grab_set(); dialog.resizable(False, False)
@@ -731,17 +883,17 @@ Yerel yapay zeka dosya okuyamıyorsa aşağıdaki “Yapay zeka başlangıç yö
         selected = tk.StringVar(value=next(key for key, code in MODE_CODES.items() if code == configured_mode)); box = ttk.Combobox(frame, values=[self.t(key) for key in MODE_CODES], state="readonly", width=18); box.set(self.t(selected.get())); box.pack(anchor="w")
         box.bind("<<ComboboxSelected>>", lambda event: selected.set(next(key for key in MODE_CODES if self.t(key) == event.widget.get())))
         buttons = tk.Frame(frame); buttons.pack(anchor="e", pady=(16, 0)); ttk.Button(buttons, text=self.t("cancel"), command=dialog.destroy).pack(side="right")
-        def start(): dialog.destroy(); self.run_script("ilan_sonnet_esle.py", self.t("detailed"), "--mode", MODE_CODES[selected.get()])
+        def start(): dialog.destroy(); self.run_task("detailed-review", self.t("detailed"), "--mode", MODE_CODES[selected.get()])
         ttk.Button(buttons, text=self.t("start"), command=start).pack(side="right", padx=(0, 8))
 
     def create_cv(self):
         if not self.require_job(): return
         if self.selected_key not in self.matches: messagebox.showinfo(self.t("match_required"), self.t("match_required_text")); return
-        if messagebox.askyesno(self.t("create_cv"), self.t("create_confirm")): self.run_script("cv_ilan_olustur.py", self.t("create_cv"), self.selected_key)
+        if messagebox.askyesno(self.t("create_cv"), self.t("create_confirm")): self.run_task("cv-for-job", self.t("create_cv"), self.selected_key)
 
     def inspect_current_cvs(self):
-        if not self.check_hermes(): return
-        if self.require_job(): self.run_script("cv_uyum_incele.py", self.t("inspect_cv"), self.selected_key)
+        if not self.check_ai_agent(): return
+        if self.require_job(): self.run_task("cv-match", self.t("inspect_cv"), self.selected_key)
 
 
 if __name__ == "__main__":

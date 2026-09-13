@@ -1,7 +1,7 @@
 """İş Başvuru Sistemi: manuel çalıştırılan, yerel ilan toplayıcı.
 
 Kullanım:
-    python ilan_topla.py
+    python main.py collect
 
 Her kaynak herkese açık ilan kartlarını çeker, başlık/konum ön filtresi yapar,
 önce aynı koşudaki sonra kalıcı kayıt defterindeki tekrarları ayıklar. Model
@@ -18,20 +18,19 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
 
-from ilan_tekrar_ayikla import fingerprint
-from ayarlar import load_settings
-from depolama import data_dir, data_file, load_json, write_json
-from url_dogrula import safe_fetch
+from job_app.dedupe import fingerprint
+from job_app.settings import load_settings
+from job_app.storage import data_dir, data_file, load_json, resource_file, write_json
+from job_app.url_guard import safe_fetch
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
 
-ROOT = Path(__file__).resolve().parent
-SOURCES_FILE = data_file("ilan-kaynaklari.json")
-SOURCES_TEMPLATE = ROOT / "ilan-kaynaklari.ornek.json"
-REGISTRY_FILE = data_file("ilan-kayit-defteri.json")
-HISTORY_DIR = data_dir("tarama-gecmisi")
+SOURCES_FILE = data_file("job-sources.json")
+SOURCES_TEMPLATE = resource_file("examples", "job-sources.example.json")
+REGISTRY_FILE = data_file("job-registry.json")
+HISTORY_DIR = data_dir("scan-history")
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36"
 
 
@@ -104,7 +103,7 @@ def preference_mismatches(job: dict, settings: dict) -> list[str]:
         if known_city and not any(city_matches(city) for city in cities):
             mismatches.append("city")
     if work_arrangements:
-        job_arrangement = "hibrit" if is_hybrid else "uzaktan" if is_remote else "ofis"
+        job_arrangement = "hybrid" if is_hybrid else "remote" if is_remote else "onsite"
         if job_arrangement not in work_arrangements:
             mismatches.append("work_arrangement")
     # Kıdem bilgisi ilanda görünmüyorsa yanlış negatif üretmeyiz; yalnız açık çelişkiyi eleyiz.
@@ -188,7 +187,7 @@ def main() -> None:
     args = parser.parse_args()
     if args.rebuild_from_history:
         rebuilt = {}
-        for history_file in sorted(HISTORY_DIR.glob("tarama-*.json")):
+        for history_file in sorted(HISTORY_DIR.glob("scan-*.json")):
             history = load_json(history_file, {})
             for job in history.get("new_jobs", []):
                 key = fingerprint(job)
@@ -247,7 +246,7 @@ def main() -> None:
         new_jobs.append(job)
 
     write_json(REGISTRY_FILE, registry)
-    history_file = HISTORY_DIR / f"tarama-{datetime.now().strftime('%Y%m%d-%H%M%S')}.json"
+    history_file = HISTORY_DIR / f"scan-{datetime.now().strftime('%Y%m%d-%H%M%S')}.json"
     downloaded_cards = sum(item["downloaded_cards"] for item in source_stats)
     result = {"ran_at": timestamp, "scan_date": datetime.now().astimezone().date().isoformat(), "downloaded_cards": downloaded_cards, "preference_matched": len(fetched), "filtered_out": downloaded_cards - len(fetched), "filter_reasons": mismatch_counts, "source_stats": source_stats, "unique_in_batch": len(batch_keys), "new_jobs": new_jobs, "duplicate_in_batch": duplicate_in_batch, "previously_seen": previously_seen, "source_failures": failures}
     write_json(history_file, result)

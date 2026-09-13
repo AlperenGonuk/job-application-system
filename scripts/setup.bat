@@ -1,6 +1,6 @@
 @echo off
 setlocal
-cd /d "%~dp0"
+cd /d "%~dp0.."
 
 where py >nul 2>nul
 if errorlevel 1 (
@@ -19,7 +19,7 @@ if not exist ".venv\Scripts\python.exe" (
 if errorlevel 1 goto :error
 
 echo.
-echo Kurulum tamamlandi. Simdi baslat.bat dosyasini calistirabilirsiniz.
+echo Kurulum tamamlandi. Simdi scripts\start.bat dosyasini calistirabilirsiniz.
 pause
 exit /b 0
 

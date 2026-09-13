@@ -7,7 +7,8 @@ This tool is designed for local use. It does not apply to jobs automatically, re
 ### Data boundaries
 
 - User profiles, CVs, scan history, and AI results are stored only under `data/`; Git ignores this folder.
-- Phone numbers, email addresses, physical addresses, photos, and local file paths are excluded from AI-review inputs.
+- Known identity fields (name, phone, email, address, photo, ID number) are removed from AI-review inputs. Free text and URL query/fragment parameters are masked for phone numbers, email addresses, ID numbers, street addresses, photos, and local file paths. This masking is pattern-based and best effort; it is not a guarantee that unusually formatted personal data is caught.
+- Prompts are never passed through a shell. On Windows, a prompt that would have to go through a `.cmd`/`.bat` file as an argument is sent to the underlying program of a standard npm shim instead; if that cannot be resolved, the call is refused rather than truncated.
 - Job descriptions are fetched only from allowed HTTPS sources with redirect and response-size limits.
 
 ### Safe use
@@ -29,7 +30,8 @@ Bu araç yerel kullanıma yöneliktir. Otomatik başvuru, e-posta okuma veya hes
 ### Veri sınırları
 
 - Kullanıcı profili, CV'ler, tarama geçmişi ve yapay zekâ sonuçları yalnız `data/` altında tutulur; Git bu klasörü yok sayar.
-- Telefon, e-posta, açık adres, fotoğraf ve yerel dosya yolu yapay zekâ değerlendirme girdilerine gönderilmez.
+- Bilinen kimlik alanları (ad, telefon, e-posta, adres, fotoğraf, kimlik no) yapay zekâ değerlendirme girdilerinden çıkarılır. Serbest metin ve bağlantı sorgu/parça parametrelerinde telefon, e-posta, kimlik numarası, açık adres, fotoğraf ve yerel dosya yolu maskelenir. Bu maskeleme desen tabanlıdır ve en iyi çaba ilkesiyle çalışır; alışılmadık biçimde yazılmış kişisel verinin yakalanacağını garanti etmez.
+- İstemler hiçbir zaman kabuk üzerinden geçirilmez. Windows'ta `.cmd`/`.bat` dosyasına argüman olarak gitmesi gereken istem, standart npm kısayolunun çağırdığı gerçek programa gönderilir; bu çözülemezse istem kırpılmak yerine çağrı reddedilir.
 - İş ilanı metni yalnız HTTPS kullanan izinli kaynaklardan, yönlendirme ve yanıt boyutu sınırlarıyla alınır.
 
 ### Güvenli kullanım
