@@ -17,6 +17,9 @@ arayuz-cv-secimleri.json
 cv-ats-profilleri.json
 cv-ats-puanlari.json
 
+# Geliştirici oturumları arasında devir notu; yerel test ayrıntıları içerir
+docs/DEVELOPMENT-STATUS.md
+
 # Python / çalışma dosyaları
 __pycache__/
 .venv/
